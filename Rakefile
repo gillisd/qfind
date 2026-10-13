@@ -6,15 +6,15 @@ RSpec::Core::RakeTask.new
 
 FINDUTILS_VERSION = "v4.11.0"
 
-def run(*cmd)
+def run(*cmd, stdin_data: nil)
   warn "RUN #{cmd.join(" ")}"
-  r, status = Open3.capture2e *cmd
+  r, status = Open3.capture2e(*cmd, stdin_data:)
   raise r unless status.success?
   r.strip
 end
 
 def untar(file)
-  run "tar", "-xzvf", file
+  run "xz -dc | tar -xv", stdin_data: File.binread(file)
 end
 
 module UpstreamUtils
