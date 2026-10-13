@@ -142,7 +142,7 @@ internal/find/                     (task that creates each file in brackets)
   main.go            Main: defaults, locale, leading options, tree, needsSerial, start points, cleanup   [2,3,4]  (ftsfind.c main)
   options.go         Options, DebugFlags, SymlinkMode, set_option_defaults, set_follow_state, isatty       [2]  (util.c, parser.c)
   leading.go         -H -L -P -D -O, -D help, process_debug_options, process_optimisation_option          [2]  (util.c)
-  run.go             Run: exit status, locks (evalMu, execMu, dying), shared state                        [2]
+  run.go             Run: exit status, locks (evalMu, execMu), exit claim, shared state                   [2]
   diag.go            errorf/fatalf/exit (close_stdout), writeStderr, debugf, usageFailure, cbyte          [2]  (glibc error, gnulib closeout)
   help.go            --help and --version texts                                                           [2]  (util.c usage, parser.c parse_version)
   predicate.go       Predicate, enums, FuncID, predArgs, apply_predicate                                  [3]  (defs.h, util.c)
@@ -1058,10 +1058,12 @@ func (r *Run) debugf(format string, a ...any) {
 func cbyte(b byte) string { return string([]byte{b}) }
 
 // fatalf is error(EXIT_FAILURE, errnum, …): report, then exit(1) through the
-// same flush-and-close path as a normal exit.
+// same flush-and-close path as a normal exit. It claims the exit before it
+// reports, so only the first fatal error is printed.
 func (r *Run) fatalf(err error, format string, a ...any) {
+	r.claimExit()
 	r.errorf(err, format, a...)
-	r.exit(1)
+	r.exitClaimed(1)
 }
 
 // usageFailure is usage(EXIT_FAILURE): no program prefix on the hint.
@@ -1075,12 +1077,26 @@ func (r *Run) usageFailure() {
 // prints "write error" and forces status 1 (EPIPE included: GNU sets no
 // ignore_EPIPE, and SIGPIPE normally kills the process first).
 //
-// exit is the only way out of the process. The first caller takes dying
-// and never releases it, so a second fatal error on another goroutine
-// blocks instead of printing a second message or exiting with another
-// status (GNU, being single-threaded, dies once).
+// exit is the only way out of the process; see claimExit.
 func (r *Run) exit(status int) {
-	r.dying.Lock()
+	r.claimExit()
+	r.exitClaimed(status)
+}
+
+// claimExit makes the caller the one goroutine that exits the process (GNU,
+// being single-threaded, dies once). The first caller wins. A later caller
+// is on another goroutine, because nothing that runs after a claim dies
+// again, so it blocks until the winner's os.Exit instead of printing a
+// second message or exiting with another status. A write failure inside
+// fatalAt's commit claims first, as GNU would have died at that write.
+func (r *Run) claimExit() {
+	if !r.exiting.CompareAndSwap(false, true) {
+		select {}
+	}
+}
+
+// exitClaimed is exit's work once the caller holds the claim.
+func (r *Run) exitClaimed(status int) {
 	if r.out != nil {
 		r.out.flushFilesQuietly() // Task 7: stdio flushes every FILE at exit
 		if err := r.out.closeAll(); err != nil {
@@ -1100,7 +1116,7 @@ func (r *Run) exit(status int) {
 	os.Exit(status)
 }
 ```
-Add `dying sync.Mutex` to `Run`.
+Add `exiting atomic.Bool` to `Run`.
 
 For this task, add a minimal `Output` in `internal/find/output.go` that buffers stdout through `bufio.NewWriterSize(os.Stdout, 64<<10)`. It exposes:
 - `flushForDiagnostic()`;
@@ -7255,12 +7271,17 @@ func (r *Run) emulateLeakAbort(argv []string) int {
 	return 128 + 6
 }
 
-// recordInheritedFDs remembers the descriptors find started with (fdleak.c
-// remember_non_cloexec_fds). Main calls it first.
+// recordInheritedFDs remembers the descriptors find started with that a
+// child would inherit (fdleak.c remember_non_cloexec_fds). Main calls it
+// first. Close-on-exec and already-closed descriptors are left out, such as
+// the one openFDs read /proc/self/fd through, so a directory that fastwalk
+// later opens under that number is still swept.
 func (r *Run) recordInheritedFDs() {
 	r.inheritedFDs = map[int]bool{}
 	for _, fd := range openFDs() {
-		r.inheritedFDs[fd] = true
+		if flags, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0); err == nil && flags&unix.FD_CLOEXEC == 0 {
+			r.inheritedFDs[fd] = true
+		}
 	}
 }
 
@@ -12076,7 +12097,7 @@ go build -o .scratch/qfind-prof ./cmd/qfind
 QFIND_CPUPROFILE=.scratch/cpu.out .scratch/qfind-prof /path/to/tree -name '*.go' >/dev/null
 go tool pprof -top .scratch/qfind-prof .scratch/cpu.out | head -30
 ```
-The `QFIND_CPUPROFILE` hook is a few lines in `cmd/qfind/main.go`. When the variable is set, it calls `pprof.StartCPUProfile` and stores `pprof.StopCPUProfile` in an exported `var BeforeExit func()` in `internal/find`. `Run.exit` calls that hook just before `os.Exit`. These are the usual suspects:
+The `QFIND_CPUPROFILE` hook is a few lines in `cmd/qfind/main.go`. When the variable is set, it calls `pprof.StartCPUProfile` and stores `pprof.StopCPUProfile` in an exported `var BeforeExit func()` in `internal/find`. `Run.exitClaimed` calls that hook just before `os.Exit`. These are the usual suspects:
 - lock contention on stdout: commit records in larger batches per entry;
 - `os/user` lookups: these are cached;
 - `Entry` allocations: pool them only if the profile shows it.
