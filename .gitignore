@@ -3,3 +3,4 @@ findutils-*.tar.xz
 dist
 references
 spec/examples.txt
+*.swp

@@ -1,0 +1,25 @@
+{
+  "skillOverrides": {
+    "debugging-with-cdp": "off",
+    "crystal-lang": "off",
+    "connect-required-verification-information": "name-only",
+    "connect-recommend": "off",
+    "golang-patterns": "off",
+    "golang-testing": "off",
+    "homebrew-gnu-formula": "name-only",
+    "homebrew-go-formula": "name-only",
+    "metronome": "off",
+    "rubocop-plugin": "name-only",
+    "stripe-apps": "off",
+    "stripe-best-practices": "off",
+    "stripe-directory": "off",
+    "stripe-docs": "off",
+    "stripe-projects": "off",
+    "stripe-pay": "off",
+    "turbo-for-rails": "name-only",
+    "the-rails-7-way": "name-only",
+    "upgrade-stripe": "name-only",
+    "duckdb-in-action": "user-invocable-only",
+    "epub-to-skill": "user-invocable-only"
+  }
+}
