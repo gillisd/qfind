@@ -152,7 +152,7 @@ namespace :upstream do
 end
 
 namespace :references do
-  repos = ["rspec/rspec", "golang/go"]
+  repos = ["rspec/rspec", "golang/go", "charlievieth/fastwalk"]
   references = repos.map { Reference.new it }
   dirs = FileList["references"]
   references.each do |reference|
