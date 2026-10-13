@@ -15,3 +15,7 @@ Use rspec features like shared_examples, shared_context etc to keep things DRY a
 ## Setup
 
 Run `rake` to build. `find` should come out in `dist/find`, and reference source should appear in `references`
+
+## Git
+
+Make every commit a clean, new commit. No amending and no force pushing.
