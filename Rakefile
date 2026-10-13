@@ -155,7 +155,6 @@ namespace :references do
   references = repos.map { Reference.new it }
   dirs = FileList.new
   references.each do |reference|
-    binding.irb
     directory reference.dir do 
       mkdir_p reference.dir
     end
