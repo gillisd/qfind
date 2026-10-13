@@ -1,0 +1,110 @@
+// Package libc reproduces the glibc behaviour GNU find exposes and Go
+// does not: strerror text, gnulib quoting, locales, POSIX TZ strings,
+// sysconf(_SC_ARG_MAX) and ctime(3).
+package libc
+
+import (
+	"errors"
+	"strconv"
+	"syscall"
+
+	"golang.org/x/sys/unix"
+)
+
+// Errno extracts the errno wrapped in err (os.PathError, os.SyscallError…).
+func Errno(err error) (syscall.Errno, bool) {
+	var e syscall.Errno
+	if errors.As(err, &e) {
+		return e, true
+	}
+	return 0, false
+}
+
+// Strerror is glibc strerror(3) for err's errno; other errors keep their text.
+func Strerror(err error) string {
+	e, ok := Errno(err)
+	if !ok {
+		return err.Error()
+	}
+	if s, ok := strerrors[e]; ok {
+		return s
+	}
+	return "Unknown error " + strconv.Itoa(int(e))
+}
+
+// strerrors is glibc 2.44's message table (generated with
+// ruby -e 'SystemCallError.new(nil, n).message' for n in 1..133, plus
+// strerror(0) and EFTYPE, which x/sys/unix does not name yet).
+var strerrors = map[syscall.Errno]string{
+	0: "Success", eftype: "Inappropriate file type or format",
+	unix.EPERM: "Operation not permitted", unix.ENOENT: "No such file or directory",
+	unix.ESRCH: "No such process", unix.EINTR: "Interrupted system call",
+	unix.EIO: "Input/output error", unix.ENXIO: "No such device or address",
+	unix.E2BIG: "Argument list too long", unix.ENOEXEC: "Exec format error",
+	unix.EBADF: "Bad file descriptor", unix.ECHILD: "No child processes",
+	unix.EAGAIN: "Resource temporarily unavailable", unix.ENOMEM: "Cannot allocate memory",
+	unix.EACCES: "Permission denied", unix.EFAULT: "Bad address",
+	unix.ENOTBLK: "Block device required", unix.EBUSY: "Device or resource busy",
+	unix.EEXIST: "File exists", unix.EXDEV: "Invalid cross-device link",
+	unix.ENODEV: "No such device", unix.ENOTDIR: "Not a directory",
+	unix.EISDIR: "Is a directory", unix.EINVAL: "Invalid argument",
+	unix.ENFILE: "Too many open files in system", unix.EMFILE: "Too many open files",
+	unix.ENOTTY: "Inappropriate ioctl for device", unix.ETXTBSY: "Text file busy",
+	unix.EFBIG: "File too large", unix.ENOSPC: "No space left on device",
+	unix.ESPIPE: "Illegal seek", unix.EROFS: "Read-only file system",
+	unix.EMLINK: "Too many links", unix.EPIPE: "Broken pipe",
+	unix.EDOM: "Numerical argument out of domain", unix.ERANGE: "Numerical result out of range",
+	unix.EDEADLK: "Resource deadlock avoided", unix.ENAMETOOLONG: "File name too long",
+	unix.ENOLCK: "No locks available", unix.ENOSYS: "Function not implemented",
+	unix.ENOTEMPTY: "Directory not empty", unix.ELOOP: "Too many levels of symbolic links",
+	unix.ENOMSG: "No message of desired type", unix.EIDRM: "Identifier removed",
+	unix.ECHRNG: "Channel number out of range", unix.EL2NSYNC: "Level 2 not synchronized",
+	unix.EL3HLT: "Level 3 halted", unix.EL3RST: "Level 3 reset",
+	unix.ELNRNG: "Link number out of range", unix.EUNATCH: "Protocol driver not attached",
+	unix.ENOCSI: "No CSI structure available", unix.EL2HLT: "Level 2 halted",
+	unix.EBADE: "Invalid exchange", unix.EBADR: "Invalid request descriptor",
+	unix.EXFULL: "Exchange full", unix.ENOANO: "No anode",
+	unix.EBADRQC: "Invalid request code", unix.EBADSLT: "Invalid slot",
+	unix.EBFONT: "Bad font file format", unix.ENOSTR: "Device not a stream",
+	unix.ENODATA: "No data available", unix.ETIME: "Timer expired",
+	unix.ENOSR: "Out of streams resources", unix.ENONET: "Machine is not on the network",
+	unix.ENOPKG: "Package not installed", unix.EREMOTE: "Object is remote",
+	unix.ENOLINK: "Link has been severed", unix.EADV: "Advertise error",
+	unix.ESRMNT: "Srmount error", unix.ECOMM: "Communication error on send",
+	unix.EPROTO: "Protocol error", unix.EMULTIHOP: "Multihop attempted",
+	unix.EDOTDOT: "RFS specific error", unix.EBADMSG: "Bad message",
+	unix.EOVERFLOW: "Value too large for defined data type", unix.ENOTUNIQ: "Name not unique on network",
+	unix.EBADFD: "File descriptor in bad state", unix.EREMCHG: "Remote address changed",
+	unix.ELIBACC: "Can not access a needed shared library", unix.ELIBBAD: "Accessing a corrupted shared library",
+	unix.ELIBSCN: ".lib section in a.out corrupted", unix.ELIBMAX: "Attempting to link in too many shared libraries",
+	unix.ELIBEXEC: "Cannot exec a shared library directly", unix.EILSEQ: "Invalid or incomplete multibyte or wide character",
+	unix.ERESTART: "Interrupted system call should be restarted", unix.ESTRPIPE: "Streams pipe error",
+	unix.EUSERS: "Too many users", unix.ENOTSOCK: "Socket operation on non-socket",
+	unix.EDESTADDRREQ: "Destination address required", unix.EMSGSIZE: "Message too long",
+	unix.EPROTOTYPE: "Protocol wrong type for socket", unix.ENOPROTOOPT: "Protocol not available",
+	unix.EPROTONOSUPPORT: "Protocol not supported", unix.ESOCKTNOSUPPORT: "Socket type not supported",
+	unix.EOPNOTSUPP: "Operation not supported", unix.EPFNOSUPPORT: "Protocol family not supported",
+	unix.EAFNOSUPPORT: "Address family not supported by protocol", unix.EADDRINUSE: "Address already in use",
+	unix.EADDRNOTAVAIL: "Cannot assign requested address", unix.ENETDOWN: "Network is down",
+	unix.ENETUNREACH: "Network is unreachable", unix.ENETRESET: "Network dropped connection on reset",
+	unix.ECONNABORTED: "Software caused connection abort", unix.ECONNRESET: "Connection reset by peer",
+	unix.ENOBUFS: "No buffer space available", unix.EISCONN: "Transport endpoint is already connected",
+	unix.ENOTCONN: "Transport endpoint is not connected", unix.ESHUTDOWN: "Cannot send after transport endpoint shutdown",
+	unix.ETOOMANYREFS: "Too many references: cannot splice", unix.ETIMEDOUT: "Connection timed out",
+	unix.ECONNREFUSED: "Connection refused", unix.EHOSTDOWN: "Host is down",
+	unix.EHOSTUNREACH: "No route to host", unix.EALREADY: "Operation already in progress",
+	unix.EINPROGRESS: "Operation now in progress", unix.ESTALE: "Stale file handle",
+	unix.EUCLEAN: "Structure needs cleaning", unix.ENOTNAM: "Not a XENIX named type file",
+	unix.ENAVAIL: "No XENIX semaphores available", unix.EISNAM: "Is a named type file",
+	unix.EREMOTEIO: "Remote I/O error", unix.EDQUOT: "Disk quota exceeded",
+	unix.ENOMEDIUM: "No medium found", unix.EMEDIUMTYPE: "Wrong medium type",
+	unix.ECANCELED: "Operation canceled", unix.ENOKEY: "Required key not available",
+	unix.EKEYEXPIRED: "Key has expired", unix.EKEYREVOKED: "Key has been revoked",
+	unix.EKEYREJECTED: "Key was rejected by service", unix.EOWNERDEAD: "Owner died",
+	unix.ENOTRECOVERABLE: "State not recoverable", unix.ERFKILL: "Operation not possible due to RF-kill",
+	unix.EHWPOISON: "Memory page has hardware error",
+}
+
+// eftype is EFTYPE (asm-generic/errno.h), "Wrong file type for the intended
+// operation".
+const eftype = syscall.Errno(134)
