@@ -1,8 +1,10 @@
 require 'open3'
 require 'rake/clean'
 require 'rspec/core/rake_task'
+require 'rubocop/rake_task'
 
 RSpec::Core::RakeTask.new
+RuboCop::RakeTask.new
 
 FINDUTILS_VERSION = "v4.11.0"
 
@@ -172,4 +174,7 @@ namespace :references do
   task :setup => dirs
 end
 
-multitask :default => ["upstream:build", "references:setup"]
+desc "setup the project"
+multitask :setup => ["upstream:build", "references:setup"]
+
+task :default => [:setup, :spec, :rubocop]

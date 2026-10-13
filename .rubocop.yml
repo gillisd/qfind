@@ -1,0 +1,275 @@
+# ===========================================================================
+# RuboCop Configuration
+#
+# Base: Stock RuboCop defaults
+# AI guardrails: rubocop-claude plugin (all Claude/ cops + stricter metrics)
+# Performance: rubocop-performance (with chain-hostile cops disabled)
+#
+# Philosophy: idiomatic Ruby, pipeline-style chaining, strict for AI agents,
+# readable for humans.
+# ===========================================================================
+
+plugins:
+  - rubocop-claude
+  - rubocop-performance
+  - rubocop-rake
+  - rubocop-rspec
+
+AllCops:
+  NewCops: enable
+  TargetRubyVersion: 4.0
+  Exclude:
+    - bin/*
+    - vendor/**/*
+    - data/templates/**/*
+    - references/**/*
+
+# ===========================================================================
+# Overrides from stock — personal style preferences
+# ===========================================================================
+
+# Double quotes everywhere. One less decision to make.
+Style/StringLiterals:
+  EnforcedStyle: double_quotes
+
+Style/StringLiteralsInInterpolation:
+  EnforcedStyle: double_quotes
+
+# Frozen string literal is transitional cruft. Ruby 3.4 has chilled strings,
+# full default freeze is coming in a future Ruby.
+Style/FrozenStringLiteralComment:
+  EnforcedStyle: never
+
+# Pipeline style. Chaining multi-line blocks is the whole point.
+Style/MultilineBlockChain:
+  Enabled: false
+
+# Block delimiters are a taste call. Pipeline code uses braces for chaining,
+# do/end for side effects. No cop captures this nuance.
+Style/BlockDelimiters:
+  Enabled: false
+
+# Write arrays like arrays.
+Style/WordArray:
+  Enabled: false
+
+Style/SymbolArray:
+  Enabled: false
+
+# Argument indentation: consistent 2-space indent, not aligned to first arg.
+Layout/FirstArgumentIndentation:
+  EnforcedStyle: consistent
+
+# Dot-aligned chaining. Dots form a visual column.
+Layout/MultilineMethodCallIndentation:
+  EnforcedStyle: aligned
+
+# ===========================================================================
+# Overrides from rubocop-claude — loosen where pipeline style conflicts
+# ===========================================================================
+
+Claude/NoOverlyDefensiveCode:
+  MaxSafeNavigationChain: 2
+
+Style/SafeNavigation:
+  MaxChainLength: 2
+
+# Allow `return a, b` for tuple-style returns.
+Style/RedundantReturn:
+  AllowMultipleReturnValues: true
+
+# ===========================================================================
+# Overrides from rubocop-performance — disable chain-hostile cops
+# ===========================================================================
+
+Performance/ChainArrayAllocation:
+  Enabled: false
+
+Performance/MapMethodChain:
+  Enabled: false
+
+# ===========================================================================
+# Additional tightening — not set by stock or rubocop-claude
+# ===========================================================================
+
+# Zeitwerk loaders are mutable by design — only flag literal mutable values.
+Style/MutableConstant:
+  EnforcedStyle: literals
+
+# Short blocks push toward small chained steps instead of fat lambdas.
+Metrics/BlockLength:
+  Max: 8
+  CountAsOne:
+    - array
+    - hash
+    - heredoc
+    - method_call
+  AllowedMethods:
+    - command
+  Exclude:
+    - "test/**/*"
+    - "gempilot.gemspec"
+    - "rakelib/**/*.rake"
+
+Metrics/ClassLength:
+  Exclude:
+    - "test/**/*"
+
+Metrics/MethodLength:
+  Exclude:
+    - "test/**/*"
+
+Metrics/AbcSize:
+  Exclude:
+    - "test/**/*"
+
+Claude/NoFancyUnicode:
+  Exclude:
+    - "gempilot.gemspec"
+
+# Anonymous forwarding (*, **, &) breaks TruffleRuby, JRuby, and
+# Ruby < 3.2. Named args are explicit and portable.
+#
+#   # bad — anonymous forwarding, not portable
+#   def process(*, **, &)
+#     other_method(*, **, &)
+#   end
+#
+#   # good — named, works everywhere, readable
+#   def process(*args, **kwargs, &block)
+#     other_method(*args, **kwargs, &block)
+#   end
+Style/ArgumentsForwarding:
+  Enabled: false
+
+# Explicit begin/rescue/end is clearer than implicit method-body rescue.
+# The begin block scopes what's being rescued. Without it, the rescue
+# looks like it belongs to the method signature.
+#
+#   # bad — what exactly is being rescued here?
+#   def process
+#     logger.info("starting")
+#     result = dangerous_call
+#     logger.info("done")
+#   rescue NetworkError => e
+#     retry_later(e)
+#   end
+#
+#   # good — begin scopes the danger
+#   def process
+#     logger.info("starting")
+#     begin
+#       result = dangerous_call
+#     rescue NetworkError => e
+#       retry_later(e)
+#     end
+#     logger.info("done")
+#   end
+Style/RedundantBegin:
+  Enabled: false
+
+# Classes get rdoc. Run `rake rdoc` and keep it honest.
+#
+#   # bad
+#   class UserService
+#     def call(user) = process(user)
+#   end
+#
+#   # good
+#   # Handles user lifecycle operations including activation,
+#   # deactivation, and profile updates.
+#   class UserService
+#     def call(user) = process(user)
+#   end
+Style/Documentation:
+  Enabled: true
+  Exclude:
+    - "spec/**/*"
+    - "test/**/*"
+
+# Trailing commas in multiline literals and arguments.
+# Cleaner diffs — adding an element doesn't touch the previous line.
+# Also saves keystrokes when appending.
+#
+#   # bad
+#   method_call(
+#     arg1,
+#     arg2
+#   )
+#
+#   # good
+#   method_call(
+#     arg1,
+#     arg2,
+#   )
+#
+#   # bad
+#   hash = {
+#     name: "Alice",
+#     age: 30
+#   }
+#
+#   # good
+#   hash = {
+#     name: "Alice",
+#     age: 30,
+#   }
+Style/TrailingCommaInArrayLiteral:
+  EnforcedStyleForMultiline: comma
+
+Style/TrailingCommaInHashLiteral:
+  EnforcedStyleForMultiline: comma
+
+Style/TrailingCommaInArguments:
+  EnforcedStyleForMultiline: comma
+
+# ===========================================================================
+# RSpec — rubocop-rspec overrides
+# ===========================================================================
+
+# Not every describe block wraps a class. Feature specs, request specs,
+# and integration tests describe behavior, not objects.
+#
+#   # "bad" according to this cop — but perfectly valid
+#   RSpec.describe "User registration flow" do
+#     it "sends a welcome email" do
+#       ...
+#     end
+#   end
+#
+#   # this cop only wants
+#   RSpec.describe User do
+#     ...
+#   end
+RSpec/DescribeClass:
+  Enabled: false
+
+# Subject placement is a readability call, not a rule. Sometimes
+# let blocks need to come first to make subject comprehensible.
+#
+#   # "bad" according to this cop
+#   let(:user) { create(:user) }
+#   subject { described_class.new(user) }
+#
+#   # cop wants subject first — but then you're reading
+#   # `described_class.new(user)` before knowing what `user` is
+RSpec/LeadingSubject:
+  Enabled: false
+
+# Block style for expect { }.to change { } reads like a sentence
+# and makes the mutation scope explicit.
+#
+#   # bad (method style)
+#   expect { user.activate! }.to change(user, :active?).from(false).to(true)
+#
+#   # good (block style)
+#   expect { user.activate! }.to change { user.active? }.from(false).to(true)
+RSpec/ExpectChange:
+  EnforcedStyle: block
+
+RSpec/NamedSubject:
+  Enabled: false
+
+# have_file_content matcher accepts a filename string in expect()
+RSpec/ExpectActual:
+  Enabled: false
