@@ -21,6 +21,7 @@ AllCops:
   Exclude:
     - bin/*
     - vendor/**/*
+    - findutils*/**/*
     - data/templates/**/*
     - references/**/*
 

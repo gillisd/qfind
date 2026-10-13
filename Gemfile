@@ -12,3 +12,5 @@ gem "rubocop-claude", "~> 0.1.1"
 gem "json", "~> 2.21"
 
 gem "rubocop-rake", "~> 0.7.1"
+
+gem "rubocop-performance", "~> 1.27"
