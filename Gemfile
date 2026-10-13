@@ -1,0 +1,12 @@
+# frozen_string_literal: true
+
+source "https://rubygems.org"
+
+# gem "rails"
+
+gem "rake", "~> 13.4"
+gem "rspec", "~> 3.13"
+gem "rubocop", "~> 1.92"
+gem "rubocop-rspec", "~> 3.10"
+gem "rubocop-claude", "~> 0.1.1"
+gem "json", "~> 2.21"
