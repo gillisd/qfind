@@ -234,7 +234,7 @@ docs/superpowers/plans/2026-10-13-qfind.md   this plan, committed
 ```bash
 rm dist/find
 stat -c '%h' findutils-4.11.0/find/find          # expect: 1
-FIND=$PWD/findutils-4.11.0/find/find bundle exec rspec 2>&1 | tail -3
+FIND=$PWD/findutils-4.11.0/find/find bundle exec rspec 2>&1 | grep -E '^[0-9]+ examples?, '
 ```
 Expected: `19214 examples, 0 failures, 547 pending`.
 
@@ -312,16 +312,16 @@ namespace :qfind do
   task build: binary
 end
 ```
-Replace the default task:
+Replace the default task. rubocop runs before the suite: as uid 1000 the suite always ends with the 15 accepted `rlimit_nproc: 0` failures (Global Constraints), and RSpec's rake task aborts `rake` on any failure, so a `:rubocop` after `:spec` would never run.
 ```ruby
-task default: [:setup, "qfind:build", :spec, :rubocop]
+task default: [:setup, "qfind:build", :rubocop, :spec]
 ```
 
 - [ ] **Step 5: Build and confirm the suite runs against the stub**
 
 ```bash
 bundle exec rake qfind:build && ./dist/find; echo "exit=$?"
-bundle exec rspec 2>&1 | tail -3
+bundle exec rspec 2>&1 | grep -E '^[0-9]+ examples?, '
 ```
 Expected: `find: not implemented yet`, `exit=1`; the suite runs to completion with thousands of failures and `547 pending` or more. Record the failure count in the commit message.
 
@@ -366,7 +366,7 @@ The implementation plan is `docs/superpowers/plans/2026-10-13-qfind.md`.
 
 ## Setup
 
-Run `rake` to build everything and run the suite.
+Run `rake` to build everything, then run rubocop and the suite. As a non-root user it exits non-zero, because the 15 `rlimit_nproc: 0` examples, which no Go binary can start under, fail by design.
 
 - `dist/find` is qfind: `rake qfind:build` (`go build -trimpath -o dist/find ./cmd/qfind`).
 - GNU find 4.11.0 is built from source as the reference oracle at `findutils-4.11.0/find/find` (`rake upstream:build`). Run the suite against it with `FIND=$PWD/findutils-4.11.0/find/find bundle exec rspec`.
@@ -438,7 +438,7 @@ GNU find's observable text comes from glibc (`strerror`, `error()`, quoting, loc
 
 - [ ] **Step 1: Confirm the target specs fail**
 
-Run: `bundle exec rspec spec/find/options/help_spec.rb spec/find/options/version_spec.rb 2>&1 | tail -2`
+Run: `bundle exec rspec spec/find/options/help_spec.rb spec/find/options/version_spec.rb 2>&1 | grep -E '^[0-9]+ examples?, '`
 Expected: every example fails ("find: not implemented yet").
 
 - [ ] **Step 2: `internal/libc/errno.go` — glibc strerror text**
@@ -1353,8 +1353,8 @@ with `func libcCtime(r *Run) string { return libc.Ctime(time.Unix(r.opt.CurDaySt
 
 ```bash
 bundle exec rake qfind:build
-bundle exec rspec spec/find/options/help_spec.rb spec/find/options/version_spec.rb 2>&1 | tail -2
-bundle exec rspec spec/find/options/debug_spec.rb spec/find/options/optimisation_spec.rb -e 'without a level' -e 'not a number' -e 'negative level' -e 'trailing the level' -e 'above 65535' -e 'out of the numeric range' -e 'separate argument' -e 'without a list' -e 'with the list ""' -e 'with the list ","' -e 'with help' 2>&1 | tail -2
+bundle exec rspec spec/find/options/help_spec.rb spec/find/options/version_spec.rb 2>&1 | grep -E '^[0-9]+ examples?, '
+bundle exec rspec spec/find/options/debug_spec.rb spec/find/options/optimisation_spec.rb -e 'without a level' -e 'not a number' -e 'negative level' -e 'trailing the level' -e 'above 65535' -e 'out of the numeric range' -e 'separate argument' -e 'without a list' -e 'with the list ""' -e 'with the list ","' -e 'with help' 2>&1 | grep -E '^[0-9]+ examples?, '
 ```
 Expected:
 - help/version: 0 failures, except the placement-warning example (`find . -name x --help` on a terminal) and the `-foo --help` unknown-predicate examples, which need Task 3.
@@ -1425,7 +1425,7 @@ It also adds the stdout layer with per-file transactions, and evaluates starting
 - [ ] **Step 1: Record the failing gates**
 
 ```bash
-bundle exec rspec spec/find/operators spec/find/expressions_spec.rb spec/find/tests/true_spec.rb spec/find/tests/false_spec.rb spec/find/actions/print_spec.rb spec/find/actions/print0_spec.rb spec/find/positional_options/warn_spec.rb spec/find/global_options/placement_spec.rb 2>&1 | tail -2
+bundle exec rspec spec/find/operators spec/find/expressions_spec.rb spec/find/tests/true_spec.rb spec/find/tests/false_spec.rb spec/find/actions/print_spec.rb spec/find/actions/print0_spec.rb spec/find/positional_options/warn_spec.rb spec/find/global_options/placement_spec.rb 2>&1 | grep -E '^[0-9]+ examples?, '
 ```
 Expected: nearly every example fails.
 
@@ -3518,7 +3518,7 @@ Delete the Task 2 help shim.
 
 ```bash
 bundle exec rake qfind:build
-bundle exec rspec spec/find/operators spec/find/expressions_spec.rb spec/find/positional_options/warn_spec.rb spec/find/global_options/placement_spec.rb spec/find/options spec/find/tests/true_spec.rb spec/find/tests/false_spec.rb spec/find/actions/print_spec.rb spec/find/actions/print0_spec.rb --format progress 2>&1 | tail -3
+bundle exec rspec spec/find/operators spec/find/expressions_spec.rb spec/find/positional_options/warn_spec.rb spec/find/global_options/placement_spec.rb spec/find/options spec/find/tests/true_spec.rb spec/find/tests/false_spec.rb spec/find/actions/print_spec.rb spec/find/actions/print0_spec.rb --format progress 2>&1 | grep -E '^[0-9]+ examples?, '
 ```
 Expected:
 - Every "a rejected command line" example passes.
@@ -3589,7 +3589,7 @@ This task replaces `ftsfind.c`'s fts loop with fastwalk while reproducing every 
 - [ ] **Step 1: Record the failing gates**
 
 ```bash
-bundle exec rspec spec/find/traversal_spec.rb spec/find/starting_points_spec.rb spec/find/global_options spec/find/options/symbolic_links_spec.rb spec/find/positional_options/follow_spec.rb spec/find/actions/prune_spec.rb spec/find/actions/quit_spec.rb spec/find/operators spec/find/tests/true_spec.rb spec/find/tests/false_spec.rb --format progress 2>&1 | tail -2
+bundle exec rspec spec/find/traversal_spec.rb spec/find/starting_points_spec.rb spec/find/global_options spec/find/options/symbolic_links_spec.rb spec/find/positional_options/follow_spec.rb spec/find/actions/prune_spec.rb spec/find/actions/quit_spec.rb spec/find/operators spec/find/tests/true_spec.rb spec/find/tests/false_spec.rb --format progress 2>&1 | grep -E '^[0-9]+ examples?, '
 ```
 
 - [ ] **Step 2: `paths.go` — fts path spelling over fastwalk paths**
@@ -4403,7 +4403,7 @@ func sameInode(a, b *os.File) bool {
 
 ```bash
 bundle exec rake qfind:build
-bundle exec rspec spec/find/traversal_spec.rb spec/find/starting_points_spec.rb spec/find/global_options spec/find/options/symbolic_links_spec.rb spec/find/positional_options/follow_spec.rb spec/find/actions/prune_spec.rb spec/find/actions/quit_spec.rb spec/find/operators spec/find/tests/true_spec.rb spec/find/tests/false_spec.rb --format progress 2>&1 | tail -2
+bundle exec rspec spec/find/traversal_spec.rb spec/find/starting_points_spec.rb spec/find/global_options spec/find/options/symbolic_links_spec.rb spec/find/positional_options/follow_spec.rb spec/find/actions/prune_spec.rb spec/find/actions/quit_spec.rb spec/find/operators spec/find/tests/true_spec.rb spec/find/tests/false_spec.rb --format progress 2>&1 | grep -E '^[0-9]+ examples?, '
 ruby .scratch/failures.rb .scratch/run.json
 ```
 Expected: every failure names a primary owned by a later task (`-name`, `-type`, `-printf`, `-exec`, `-execdir`, `-ls`, `-delete`, `-regex`, `-newer`, `-mtime`, `-size`, `-perm`, …). Check each one in `rspec --format documentation`. The traversal-only examples must all pass, including:
@@ -4473,7 +4473,7 @@ GNU find calls **glibc's own `fnmatch`**: `REPLACE_FNMATCH=0` in `config.status`
 - [ ] **Step 1: Failing gates**
 
 ```bash
-bundle exec rspec spec/find/tests/{name,iname,path,wholename,ipath,iwholename,lname,ilname}_spec.rb 2>&1 | tail -2
+bundle exec rspec spec/find/tests/{name,iname,path,wholename,ipath,iwholename,lname,ilname}_spec.rb 2>&1 | grep -E '^[0-9]+ examples?, '
 ```
 
 - [ ] **Step 2: `internal/fnmatch/fnmatch.go` — port of `FCT` (fnmatch_loop.c)**
@@ -5012,13 +5012,13 @@ Replace these 8 lines in `parsetable.go`:
 
 ```bash
 bundle exec rake qfind:build
-bundle exec rspec spec/find/tests/{name,iname,path,wholename,ipath,iwholename,lname,ilname}_spec.rb spec/find/options/optimisation_spec.rb spec/find/operators spec/find/expressions_spec.rb 2>&1 | tail -2
+bundle exec rspec spec/find/tests/{name,iname,path,wholename,ipath,iwholename,lname,ilname}_spec.rb spec/find/options/optimisation_spec.rb spec/find/operators spec/find/expressions_spec.rb 2>&1 | grep -E '^[0-9]+ examples?, '
 ```
 Expected:
 - The 8 pattern files pass, except examples that also use `-printf`, `-exec` or `-type` (later tasks).
 - The `-O` "promoting cheap predicate -name file" examples now pass.
 
-Then run the whole suite to confirm no regressions in earlier gates: `bundle exec rspec --format progress | tail -3`.
+Then run the whole suite to confirm no regressions in earlier gates: `bundle exec rspec --format progress | grep -E '^[0-9]+ examples?, '`.
 
 - [ ] **Step 7: Commit**
 
@@ -5047,7 +5047,7 @@ git commit -m "qfind: glibc-compatible fnmatch and the -name/-path/-lname famili
 - [ ] **Step 1: Failing gates**
 
 ```bash
-bundle exec rspec spec/find/tests/type_spec.rb spec/find/tests/xtype_spec.rb 2>&1 | tail -2
+bundle exec rspec spec/find/tests/type_spec.rb spec/find/tests/xtype_spec.rb 2>&1 | grep -E '^[0-9]+ examples?, '
 ```
 
 - [ ] **Step 2: `pred_types.go` — `insert_type`, `pred_type`, `pred_xtype` (parser.c 2533, pred.c 925/1080)**
@@ -5242,7 +5242,7 @@ Add `types [ftypeCount]bool` to `predArgs`. `-xtype` calls `optionl_stat`/`optio
 ```
 ```bash
 bundle exec rake qfind:build
-bundle exec rspec spec/find/tests/type_spec.rb spec/find/tests/xtype_spec.rb spec/find/options/optimisation_spec.rb spec/find/global_options spec/find/options/symbolic_links_spec.rb 2>&1 | tail -2
+bundle exec rspec spec/find/tests/type_spec.rb spec/find/tests/xtype_spec.rb spec/find/options/optimisation_spec.rb spec/find/global_options spec/find/options/symbolic_links_spec.rb 2>&1 | grep -E '^[0-9]+ examples?, '
 ```
 Expected:
 - 0 failures in `type_spec.rb`.
@@ -5292,7 +5292,7 @@ It also adds the support those directives need:
 - [ ] **Step 1: Failing gates**
 
 ```bash
-bundle exec rspec spec/find/actions/{printf,printf_escapes,printf_names,printf_attributes,printf_times,fprint,fprint0,fprintf}_spec.rb 2>&1 | tail -2
+bundle exec rspec spec/find/actions/{printf,printf_escapes,printf_names,printf_attributes,printf_times,fprint,fprint0,fprintf}_spec.rb 2>&1 | grep -E '^[0-9]+ examples?, '
 ```
 
 - [ ] **Step 2: `sharefile.go` and `output.go` — output files shared by (dev, ino)**
@@ -6678,7 +6678,7 @@ Table entries:
 
 ```bash
 bundle exec rake qfind:build
-bundle exec rspec spec/find/actions/{printf,printf_escapes,printf_names,printf_attributes,printf_times,fprint,fprint0,fprintf,print,print0}_spec.rb spec/find/unusual_filenames_spec.rb spec/find/tests/size_spec.rb spec/find/tests/xtype_spec.rb spec/find/options/symbolic_links_spec.rb 2>&1 | tail -2
+bundle exec rspec spec/find/actions/{printf,printf_escapes,printf_names,printf_attributes,printf_times,fprint,fprint0,fprintf,print,print0}_spec.rb spec/find/unusual_filenames_spec.rb spec/find/tests/size_spec.rb spec/find/tests/xtype_spec.rb spec/find/options/symbolic_links_spec.rb 2>&1 | grep -E '^[0-9]+ examples?, '
 ```
 Expected: 0 failures except examples that use `-ls`/`-fls` (Task 9), `-exec` (Task 8), `-size` (Task 11) or `-perm` (Task 13). The `%Z` example passes when SELinux is off (it is skipped otherwise).
 
@@ -6711,7 +6711,7 @@ Children run **one at a time** under a global lock, just as GNU's `launch()` wai
 - [ ] **Step 1: Failing gates**
 
 ```bash
-bundle exec rspec spec/find/actions/{exec,execdir,ok,okdir}_spec.rb 2>&1 | tail -2
+bundle exec rspec spec/find/actions/{exec,execdir,ok,okdir}_spec.rb 2>&1 | grep -E '^[0-9]+ examples?, '
 ```
 
 - [ ] **Step 2: `buildcmd.go` — arg-size accounting (lib/buildcmd.c)**
@@ -7323,7 +7323,7 @@ Evaluation is already serialised when `-ok`/`-okdir` is present (Task 4), so pro
 
 ```bash
 bundle exec rake qfind:build
-bundle exec rspec spec/find/actions/{exec,execdir,ok,okdir,quit}_spec.rb spec/find/options/debug_spec.rb spec/find/global_options/ignore_readdir_race_spec.rb spec/find/actions/printf_escapes_spec.rb spec/find/tests/links_spec.rb spec/find/tests/perm_spec.rb 2>&1 | tail -3
+bundle exec rspec spec/find/actions/{exec,execdir,ok,okdir,quit}_spec.rb spec/find/options/debug_spec.rb spec/find/global_options/ignore_readdir_race_spec.rb spec/find/actions/printf_escapes_spec.rb spec/find/tests/links_spec.rb spec/find/tests/perm_spec.rb 2>&1 | grep -E '^[0-9]+ examples?, '
 ```
 Expected:
 - 0 failures, except the 15 `rlimit_nproc: 0` examples (infeasible; verify each failing description contains "no more processes").
@@ -7352,7 +7352,7 @@ git add internal && git commit -m "qfind: -exec/-execdir/-ok/-okdir with buildcm
 - [ ] **Step 1: Failing gates**
 
 ```bash
-bundle exec rspec spec/find/actions/{ls,fls,delete}_spec.rb 2>&1 | tail -2
+bundle exec rspec spec/find/actions/{ls,fls,delete}_spec.rb 2>&1 | grep -E '^[0-9]+ examples?, '
 ```
 
 - [ ] **Step 2: `ls.go` — `list_file` with static, growing field widths**
@@ -7624,7 +7624,7 @@ Table:
 
 ```bash
 bundle exec rake qfind:build
-bundle exec rspec spec/find/actions/{ls,fls,delete}_spec.rb spec/find/global_options/{depth,ignore_readdir_race}_spec.rb spec/find/actions/print_spec.rb 2>&1 | tail -2
+bundle exec rspec spec/find/actions/{ls,fls,delete}_spec.rb spec/find/global_options/{depth,ignore_readdir_race}_spec.rb spec/find/actions/print_spec.rb 2>&1 | grep -E '^[0-9]+ examples?, '
 ```
 Expected: 0 failures. In particular:
 - the post-order `-delete` chain;
@@ -7665,7 +7665,7 @@ The plan has three parts:
 - [ ] **Step 1: Failing gates**
 
 ```bash
-bundle exec rspec spec/find/tests/regex_spec.rb spec/find/tests/iregex_spec.rb spec/find/positional_options/regextype_spec.rb 2>&1 | tail -2
+bundle exec rspec spec/find/tests/regex_spec.rb spec/find/tests/iregex_spec.rb spec/find/positional_options/regextype_spec.rb 2>&1 | grep -E '^[0-9]+ examples?, '
 ```
 
 - [ ] **Step 2: `syntax.go` and `errors.go`**
@@ -9081,7 +9081,7 @@ Replace Task 2's placeholder `internal/regex/syntax.go` with this file. `Options
 
 ```bash
 bundle exec rake qfind:build
-bundle exec rspec spec/find/tests/regex_spec.rb spec/find/tests/iregex_spec.rb spec/find/positional_options/regextype_spec.rb 2>&1 | tail -2
+bundle exec rspec spec/find/tests/regex_spec.rb spec/find/tests/iregex_spec.rb spec/find/positional_options/regextype_spec.rb 2>&1 | grep -E '^[0-9]+ examples?, '
 ```
 Expected: 0 failures across all 1,692 examples.
 
@@ -9140,7 +9140,7 @@ This task ports these numeric-argument tests from `parser.c` and `pred.c`: `get_
 - [ ] **Step 1: Failing gates**
 
 ```bash
-bundle exec rspec spec/find/tests/{size,links,inum,uid,gid,user,group,nouser,nogroup,samefile,empty,numeric_arguments}_spec.rb 2>&1 | tail -2
+bundle exec rspec spec/find/tests/{size,links,inum,uid,gid,user,group,nouser,nogroup,samefile,empty,numeric_arguments}_spec.rb 2>&1 | grep -E '^[0-9]+ examples?, '
 ```
 
 - [ ] **Step 2: `internal/libc/strtol.go`**
@@ -9599,7 +9599,7 @@ func predNogroup(r *Run, e *Entry, p *Predicate) bool { return !idcache.GroupExi
 ```
 ```bash
 bundle exec rake qfind:build
-bundle exec rspec spec/find/tests/{size,links,inum,uid,gid,user,group,nouser,nogroup,samefile,empty,numeric_arguments}_spec.rb spec/find/options/debug_spec.rb spec/find/options/optimisation_spec.rb 2>&1 | tail -2
+bundle exec rspec spec/find/tests/{size,links,inum,uid,gid,user,group,nouser,nogroup,samefile,empty,numeric_arguments}_spec.rb spec/find/options/debug_spec.rb spec/find/options/optimisation_spec.rb 2>&1 | grep -E '^[0-9]+ examples?, '
 ```
 Expected:
 - 0 failures, except the `-mmin`/`-amin` contexts of `numeric_arguments_spec.rb`, which need Task 12.
@@ -9641,7 +9641,7 @@ This task ports:
 - [ ] **Step 1: Failing gates**
 
 ```bash
-bundle exec rspec spec/find/tests/{amin,atime,cmin,ctime,mmin,mtime,used,newer,anewer,cnewer,newerxy,numeric_arguments}_spec.rb spec/find/positional_options/daystart_spec.rb spec/find/positional_options/follow_spec.rb 2>&1 | tail -2
+bundle exec rspec spec/find/tests/{amin,atime,cmin,ctime,mmin,mtime,used,newer,anewer,cnewer,newerxy,numeric_arguments}_spec.rb spec/find/positional_options/daystart_spec.rb spec/find/positional_options/follow_spec.rb 2>&1 | grep -E '^[0-9]+ examples?, '
 ```
 
 - [ ] **Step 2: `internal/libc/strtod.go` — glibc strtod in the C locale, gnulib xstrtod**
@@ -11252,7 +11252,7 @@ func predUsed(r *Run, e *Entry, p *Predicate) bool {
 `parseEntryNewerXY = parserEntry{argSpecialParse, "newerXY", parseNewerXY, predNewerXY, fnNewerXY}`.
 ```bash
 bundle exec rake qfind:build
-bundle exec rspec spec/find/tests/{amin,atime,cmin,ctime,mmin,mtime,used,newer,anewer,cnewer,newerxy,numeric_arguments}_spec.rb spec/find/positional_options/daystart_spec.rb spec/find/positional_options/follow_spec.rb spec/find/options/symbolic_links_spec.rb 2>&1 | tail -2
+bundle exec rspec spec/find/tests/{amin,atime,cmin,ctime,mmin,mtime,used,newer,anewer,cnewer,newerxy,numeric_arguments}_spec.rb spec/find/positional_options/daystart_spec.rb spec/find/positional_options/follow_spec.rb spec/find/options/symbolic_links_spec.rb 2>&1 | grep -E '^[0-9]+ examples?, '
 ```
 Expected: 0 failures. This includes:
 - `-newermt` with "3 days ago", `@1600000000.123456789`, `2020-01-01T00:00:00Z` and the `%Y-%m-%d %H:%M:%S.%N %z` form;
@@ -11297,7 +11297,7 @@ This task ports the following:
 - [ ] **Step 1: Failing gates**
 
 ```bash
-bundle exec rspec spec/find/tests/{perm,readable,writable,executable,fstype,context}_spec.rb 2>&1 | tail -2
+bundle exec rspec spec/find/tests/{perm,readable,writable,executable,fstype,context}_spec.rb 2>&1 | grep -E '^[0-9]+ examples?, '
 ```
 
 - [ ] **Step 2: `internal/modechange/modechange.go`**
@@ -11708,7 +11708,7 @@ In `help.go`'s `version()`, insert `SELINUX ` before `FTS(FTS_CWDFD) ` when `mou
 ```
 ```bash
 bundle exec rake qfind:build
-bundle exec rspec spec/find/tests/{perm,readable,writable,executable,fstype,context}_spec.rb spec/find/options/optimisation_spec.rb spec/find/options/version_spec.rb 2>&1 | tail -2
+bundle exec rspec spec/find/tests/{perm,readable,writable,executable,fstype,context}_spec.rb spec/find/options/optimisation_spec.rb spec/find/options/version_spec.rb 2>&1 | grep -E '^[0-9]+ examples?, '
 ./dist/find / -maxdepth 0 -O2 -D opt -fstype nosuchfs 2>&1 | grep 'can never succeed'
 ```
 Expected: 0 failures. The last command prints `-fstype nosuchfs can never succeed, substituting -false`.
@@ -11739,7 +11739,7 @@ At this point every primary exists. This task makes the whole suite match the or
 
 ```bash
 bundle exec rake qfind:build
-bundle exec rspec --format json --out .scratch/run.json --format progress 2>&1 | tail -3
+bundle exec rspec --format json --out .scratch/run.json --format progress 2>&1 | grep -E '^[0-9]+ examples?, '
 ruby .scratch/failures.rb .scratch/run.json
 ```
 
@@ -12021,7 +12021,7 @@ Add `deep *deepQueue` to `walker`, created in `findRoot` next to `dirs` and `def
 
 ```bash
 bundle exec rake qfind:build && .scratch/diff/deep.sh
-bundle exec rspec --format progress 2>&1 | tail -2
+bundle exec rspec --format progress 2>&1 | grep -E '^[0-9]+ examples?, '
 ```
 Expected: `same:` for all five commands, and the suite is unchanged: 15 failures, all `rlimit_nproc`, and 547 pending.
 
@@ -12029,7 +12029,7 @@ Expected: `same:` for all five commands, and the suite is unchanged: 15 failures
 
 ```bash
 go build -race -trimpath -o .scratch/qfind-race ./cmd/qfind
-FIND=$PWD/.scratch/qfind-race bundle exec rspec --format json --out .scratch/race.json --format progress 2>&1 | tail -3
+FIND=$PWD/.scratch/qfind-race bundle exec rspec --format json --out .scratch/race.json --format progress 2>&1 | grep -E '^[0-9]+ examples?, '
 ruby -rjson -e 'puts JSON.parse(File.read(".scratch/race.json"))["examples"].count { it.dig("exception", "message").to_s.include?("DATA RACE") }'
 ```
 Expected: `0`. A race-enabled binary prints `WARNING: DATA RACE` on stderr and exits 66, so a race fails the example it occurs in, and its message carries the report. Expect a few extra failures that are not races: examples near resource limits (`rlimit_nofile`, `rlimit_stack`), where the race runtime's own overhead matters. Read the message of each. Fix every race by putting the shared state behind the lock its comment names.
@@ -12067,12 +12067,12 @@ The `QFIND_CPUPROFILE` hook is a few lines in `cmd/qfind/main.go`. When the vari
 - [ ] **Step 7: Final verification and commit**
 
 ```bash
-bundle exec rake 2>&1 | tail -5     # setup, qfind:build, spec, rubocop
+bundle exec rake 2>&1 | grep -E '^[0-9]+ examples?, |files? inspected'     # setup, qfind:build, rubocop, spec
 git status --short
 ```
 Expected:
-- `rake` reports `19214 examples, 15 failures, 547 pending`, and the 15 failures are the `rlimit_nproc: 0` examples listed in Global Constraints;
-- rubocop is clean, since the specs are unchanged.
+- rubocop, which runs first, reports `no offenses detected`, since the specs are unchanged;
+- the suite reports `19214 examples, 15 failures, 547 pending`, and the 15 failures are the `rlimit_nproc: 0` examples listed in Global Constraints. They make `rake` itself exit non-zero.
 
 ```bash
 gofmt -l cmd internal; go vet ./...
