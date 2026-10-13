@@ -153,7 +153,7 @@ end
 namespace :references do
   repos = ["rspec/rspec"]
   references = repos.map { Reference.new it }
-  dirs = FileList.new
+  dirs = FileList["references"]
   references.each do |reference|
     directory reference.dir do 
       mkdir_p reference.dir
