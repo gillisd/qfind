@@ -326,14 +326,14 @@ Expected: `find: not implemented yet`, `exit=1`; the suite runs to completion wi
 
 - [ ] **Step 6: Scratch helpers (git-ignored)**
 
-`.scratch/gnufind`:
+`.scratch/gnufind` (a caller's `TZ` wins, as an example's `env:` does in the suite; `LC_ALL` stays pinned to `C`, because the login shell exports `LC_ALL=en_US.UTF-8`):
 ```bash
 #!/bin/bash
-export LC_ALL=C TZ=UTC GNU_FINDUTILS_FD_LEAK_CHECK=1
+export LC_ALL=C TZ=${TZ:-UTC} GNU_FINDUTILS_FD_LEAK_CHECK=1
 unset POSIXLY_CORRECT LANG LANGUAGE
 exec -a find /workspace/qfind.master/findutils-4.11.0/find/find "$@"
 ```
-`.scratch/qf`: the same with `/workspace/qfind.master/dist/find`.
+`.scratch/qf`: the same with `/workspace/qfind.master/dist/find`. To reproduce an example that sets `LC_ALL` or `LANG`, run the binary directly with that example's environment instead of a wrapper.
 `.scratch/failures.rb`:
 ```ruby
 require "json"
@@ -3534,7 +3534,7 @@ Expected:
 List them with `ruby .scratch/failures.rb`. Spot-check by hand:
 ```bash
 ./dist/find -D opt -O3 . -size 0 -type f -name file 2>&1 >/dev/null | grep -c 'promoting cheap'   # 0 until Tasks 5–11 parse those primaries
-./dist/find file -printf x 2>&1; ./dist/find . -print ) ; ./dist/find . -a
+./dist/find file -printf x 2>&1; ./dist/find . -print ')' ; ./dist/find . -a
 ```
 
 - [ ] **Step 13: Review Focus 4 differential check**
@@ -3543,12 +3543,13 @@ List them with `ruby .scratch/failures.rb`. Spot-check by hand:
 ```bash
 #!/bin/bash
 set -u
+export LC_ALL=C   # the suite's locale; the login shell exports en_US.UTF-8
 cd "$(mktemp -d -p /workspace/qfind.master/.scratch)"
 mkdir -p d && touch d/{1..2000}
 for f in /workspace/qfind.master/findutils-4.11.0/find/find /workspace/qfind.master/dist/find; do
   echo "== $f"
-  (exec -a find "$f" d -print > /dev/full); echo "exit=$?"
-  (exec -a find "$f" d -print | head -1 >/dev/null); echo "pipestatus=${PIPESTATUS[0]}"
+  (exec -a find "$f" d -print > /dev/full); echo "exit=$?"   # subshell: a bare exec would replace this script
+  exec -a find "$f" d -print | head -1 >/dev/null; echo "pipestatus=${PIPESTATUS[0]}"   # no subshell: PIPESTATUS must see find itself
 done
 ```
 Expected: both binaries print the same two lines for `/dev/full` (`find: 'standard output': No space left on device`, then `find: write error`), with `exit=1`, and the same pipe status (141).
@@ -4430,10 +4431,19 @@ set -eu
 D=/workspace/qfind.master/.scratch/diff/manytree
 [ -d "$D" ] || { mkdir -p "$D"; for i in $(seq 1 2000); do mkdir "$D/d$i"; (cd "$D/d$i" && touch $(seq -f f%g 1 100)); done; }
 G=/workspace/qfind.master/findutils-4.11.0/find/find Q=/workspace/qfind.master/dist/find
-for args in "-print" "-print0" "-printf %p:%d\n" "-fprint $D.out -print"; do
+for args in "-print" "-printf %p:%d\n"; do
   cmp <(exec -a find $G $D $args | sort) <(exec -a find $Q $D $args | sort) && echo "same: $args"
 done
+cmp <(exec -a find $G $D -print0 | sort -z) <(exec -a find $Q $D -print0 | sort -z) && echo "same: -print0"
+# Each binary writes its own -fprint file, one run after the other, so each
+# file holds only what that binary wrote.
+(exec -a find $G $D -fprint $D.g.out -print) | sort > $D.g.stdout
+(exec -a find $Q $D -fprint $D.q.out -print) | sort > $D.q.stdout
+cmp $D.g.stdout $D.q.stdout && echo "same: -fprint stdout"
+cmp <(sort $D.g.out) <(sort $D.q.out) && echo "same: -fprint file"
 ```
+It must print five `same:` lines; otherwise `cmp` names the first byte that differs.
+
 `.scratch/diff/huge.sh` (peak RSS must stay below 64 MiB for both runs, since files are never deferred):
 ```bash
 #!/bin/bash
@@ -9108,7 +9118,8 @@ if [ ! -d "$D" ]; then
 fi
 for loc in C C.UTF-8; do
   for args in "-name *" "-regex .*" "-iregex .*[A-Z].*" "-regex .*[^a].*" "-printf %p|%f|%h\n" "-ls" "-print0"; do
-    if cmp -s <(LC_ALL=$loc exec -a find $G $D $args 2>&1 | sort) <(LC_ALL=$loc exec -a find $Q $D $args 2>&1 | sort)
+    z=; [ "$args" = -print0 ] && z=-z   # NUL-separated records sort with -z
+    if cmp -s <(LC_ALL=$loc exec -a find $G $D $args 2>&1 | sort $z) <(LC_ALL=$loc exec -a find $Q $D $args 2>&1 | sort $z)
     then echo "same: $loc $args"; else echo "DIFF: $loc $args"; fi
   done
 done
@@ -11266,7 +11277,7 @@ Expected: 0 failures. This includes:
 - every NaN, exponent and hexadecimal count form;
 - the `-follow` before/after reference-file cases.
 
-Then differential-check `parse_datetime` against the oracle. Its date strings are a long tail, so compare `.scratch/gnufind . -maxdepth 0 -newermt "$s" -printf x` with `.scratch/qf` for 60 strings, under both `TZ=UTC` and `TZ=Europe/Berlin`:
+Then differential-check `parse_datetime` against the oracle. Its date strings are a long tail, so compare `.scratch/gnufind . -maxdepth 0 -newermt "$s" -printf x` with `.scratch/qf` for 60 strings, under both `TZ=UTC` and `TZ=Europe/Berlin` (prefix both wrappers with the zone, e.g. `TZ=Europe/Berlin .scratch/gnufind …`; they keep a caller's `TZ`):
 - `"now"`, `"yesterday"`, `"tomorrow 10am"`, `"last friday"`, `"next month"`, `"2 weeks ago"`, `"1 fortnight"`;
 - `"Jan 1"`, `"1 Jan 2000"`, `"Jan-1-2000"`, `"1/2/03"`, `"2003/1/2"`, `"17.6."`, `"17.6.1992"`;
 - `"20200101"`, `"20200101 +3 days"`, `"10:30pm"`, `"10:30:15.5"`, `"12am"`, `"12pm"`;
@@ -11715,7 +11726,7 @@ In `help.go`'s `version()`, insert `SELINUX ` before `FTS(FTS_CWDFD) ` when `mou
 ```bash
 bundle exec rake qfind:build
 bundle exec rspec spec/find/tests/{perm,readable,writable,executable,fstype,context}_spec.rb spec/find/options/optimisation_spec.rb spec/find/options/version_spec.rb 2>&1 | grep -E '^[0-9]+ examples?, '
-./dist/find / -maxdepth 0 -O2 -D opt -fstype nosuchfs 2>&1 | grep 'can never succeed'
+./dist/find -O2 -D opt / -maxdepth 0 -fstype nosuchfs 2>&1 | grep 'can never succeed'
 ```
 Expected: 0 failures. The last command prints `-fstype nosuchfs can never succeed, substituting -false`.
 
