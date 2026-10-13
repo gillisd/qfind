@@ -39,9 +39,12 @@ func (r *Run) writeStderr(text string) error {
 	return err
 }
 
-// debugf is fprintf(stderr, …) for -D output: no program-name prefix.
+// debugf is fprintf(stderr, …) for -D output: no program-name prefix. Like
+// fprintf, it makes no write(2) when the text is empty.
 func (r *Run) debugf(format string, a ...any) {
-	r.writeStderr(fmt.Sprintf(format, a...))
+	if s := fmt.Sprintf(format, a...); s != "" {
+		r.writeStderr(s)
+	}
 }
 
 // cbyte is C's %c of a char: the raw byte. Go's %c would UTF-8-encode a
@@ -80,6 +83,9 @@ func (r *Run) exit(status int) {
 // again, so it blocks until the winner's os.Exit instead of printing a
 // second message or exiting with another status. A write failure inside
 // fatalAt's commit claims first, as GNU would have died at that write.
+// A parked loser keeps any locks it holds forever, so exit and fatalf must
+// never be called while holding stdout's lock: the winner's closeAll needs
+// it (commit unlocks its sink before fatalf).
 func (r *Run) claimExit() {
 	if !r.exiting.CompareAndSwap(false, true) {
 		select {}

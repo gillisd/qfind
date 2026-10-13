@@ -22,6 +22,10 @@ type Run struct {
 	stderrFailed atomic.Bool // ferror(stderr): close_stdout then exits 1
 	exitStatus   atomic.Int32
 	exiting      atomic.Bool // set by the one goroutine that exits; see claimExit
+	countRates   bool        // -D rates: apply counts visits and successes
+	startPoints  []string    // the command-line starting points (tree.c start_points)
+	tree         *Predicate  // the evaluation tree (eval_tree)
+	preds        *Predicate  // the command-line predicate list (predicates)
 }
 
 func newRun(args []string) *Run {
