@@ -204,7 +204,7 @@ internal/modechange/ gnulib modechange: mode_compile, mode_adjust               
 Build and helper files:
 
 ```
-go.mod / go.sum                     module qfind, go 1.27, fastwalk v1.0.14, x/sys v0.48.0; tool goyacc (x/tools v0.50.0)
+go.mod / go.sum                     module qfind, go 1.27, ignore ./references, fastwalk v1.0.14, x/sys v0.48.0; tool goyacc (x/tools v0.50.0)
 Rakefile                            + qfind:build (dist/find); upstream:build no longer links dist/find
 CLAUDE.md                           qfind task statement (Task 1)
 docs/superpowers/plans/2026-10-13-qfind.md   this plan, committed
@@ -243,9 +243,10 @@ Expected: `19214 examples, 0 failures, 547 pending`.
 ```bash
 go mod init qfind
 go mod edit -go=1.27
+go mod edit -ignore=./references
 go get github.com/charlievieth/fastwalk@v1.0.14 golang.org/x/sys@v0.48.0
 ```
-Dependencies are pinned to releases at least two weeks old: x/sys v0.48.0 is from 2026-08-31, and Task 12's x/tools v0.50.0 is from 2026-09-08. The module proxy is reachable from this machine.
+The `ignore` directive (Go 1.25+) keeps `./...` out of `references/`, the git-ignored clones that `rake` puts inside this module. `references/go` has no `go.mod` at its root, so without the directive every `go vet ./...` gate would load `references/go/test`, Go's compiler test corpus, and fail on its mixed `package` clauses. Dependencies are pinned to releases at least two weeks old: x/sys v0.48.0 is from 2026-08-31, and Task 12's x/tools v0.50.0 is from 2026-09-08. The module proxy is reachable from this machine.
 
 - [ ] **Step 3: Write the stub entry points**
 
@@ -12074,6 +12075,6 @@ Expected:
 - rubocop is clean, since the specs are unchanged.
 
 ```bash
-gofmt -l . ; go vet ./...
+gofmt -l cmd internal; go vet ./...
 git add internal cmd && git commit -m "qfind: deep trees via /proc/self/fd, race-free, benchmarked against GNU find"
 ```
