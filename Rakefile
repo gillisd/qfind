@@ -95,14 +95,6 @@ class UpstreamArchive
     Pathname(extracted_name) / "find/find"
   end
 
-  def dist_dir
-    Pathname("dist")
-  end
-
-  def dist_binname
-    dist_dir / "find"
-  end
-
   private
 
   def stripped_version
@@ -121,10 +113,6 @@ namespace :upstream do
     untar archive.basename
   end
 
-  directory archive.dist_dir do
-    mkdir_p "dist"
-  end
-
   sources = FileList[archive.extracted_name, "#{archive.extracted_name}/find/*", "#{archive.extracted_name}/find/**/*"]
   sources.exclude archive.binname
 
@@ -135,12 +123,8 @@ namespace :upstream do
     end
   end
 
-  file archive.dist_binname => [archive.dist_dir, archive.binname] do
-    ln archive.binname, archive.dist_binname
-  end
-
   CLEAN << archive.basename
-  CLOBBER.include FileList[archive.extracted_name, archive.dist_dir]
+  CLOBBER.include FileList[archive.extracted_name, "dist"]
 
   desc "Print latest upstream version"
   task :latest_version do
@@ -148,7 +132,7 @@ namespace :upstream do
     puts archive.version
   end
 
-  task build: archive.dist_binname
+  task build: archive.binname
 end
 
 namespace :references do
@@ -173,7 +157,22 @@ namespace :references do
   task setup: dirs
 end
 
+namespace :qfind do
+  binary = "dist/find"
+  sources = FileList["go.mod", "go.sum", "cmd/**/*.go", "internal/**/*.go", "internal/**/*.y"]
+
+  directory "dist"
+
+  file binary => ["dist", *sources] do
+    rm_f binary
+    run "go", "build", "-trimpath", "-o", binary, "./cmd/qfind"
+  end
+
+  desc "Build qfind into dist/find"
+  task build: binary
+end
+
 desc "setup the project"
 multitask setup: ["upstream:build", "references:setup"]
 
-task default: [:setup, :spec, :rubocop]
+task default: [:setup, "qfind:build", :rubocop, :spec]
