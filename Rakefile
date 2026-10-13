@@ -1,17 +1,18 @@
-require 'open3'
-require 'rake/clean'
-require 'rspec/core/rake_task'
-require 'rubocop/rake_task'
+require "open3"
+require "rake/clean"
+require "rspec/core/rake_task"
+require "rubocop/rake_task"
 
 RSpec::Core::RakeTask.new
 RuboCop::RakeTask.new
 
-FINDUTILS_VERSION = "v4.11.0"
+FINDUTILS_VERSION = "v4.11.0".freeze
 
 def run(*cmd, stdin_data: nil)
   warn "RUN #{cmd.join(" ")}"
   r, status = Open3.capture2e(*cmd, stdin_data:)
   raise r unless status.success?
+
   r.strip
 end
 
@@ -36,10 +37,9 @@ class Reference
 end
 
 module ReferenceUtils
-  extend self
+  module_function
 
-  def dir
-  end
+  def dir; end
 
   def fetch(reference)
     run "gh", "repo", "clone", reference.repo.to_s, reference.path.to_s, "--", "--depth=1"
@@ -47,12 +47,12 @@ module ReferenceUtils
 end
 
 module UpstreamUtils
-  extend self
+  module_function
 
   def latest
     run <<~BASH
       curl -sL https://ftp.wayne.edu/gnu/findutils/ \
-        | grep -oE 'findutils-[0-9.]+\.tar\.xz' \
+        | grep -oE 'findutils-[0-9.]+.tar.xz' \
         | sort -uV \
         | tail -1
     BASH
@@ -142,14 +142,13 @@ namespace :upstream do
   CLEAN << archive.basename
   CLOBBER.include FileList[archive.extracted_name, archive.dist_dir]
 
-
   desc "Print latest upstream version"
   task :latest_version do
-    archive = UpstreamArchive.from_basename UpstreamUtils.latest.then { File.basename it }
+    archive = UpstreamArchive.from_basename(UpstreamUtils.latest.then { File.basename it })
     puts archive.version
   end
 
-  task :build => archive.dist_binname
+  task build: archive.dist_binname
 end
 
 namespace :references do
@@ -157,7 +156,7 @@ namespace :references do
   references = repos.map { Reference.new it }
   dirs = FileList["references"]
   references.each do |reference|
-    directory reference.dir do 
+    directory reference.dir do
       mkdir_p reference.dir
     end
 
@@ -171,10 +170,10 @@ namespace :references do
   CLOBBER.include dirs
 
   desc "Setup references"
-  task :setup => dirs
+  task setup: dirs
 end
 
 desc "setup the project"
-multitask :setup => ["upstream:build", "references:setup"]
+multitask setup: ["upstream:build", "references:setup"]
 
-task :default => [:setup, :spec, :rubocop]
+task default: [:setup, :spec, :rubocop]
