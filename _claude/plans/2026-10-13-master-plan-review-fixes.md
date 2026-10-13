@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Fix all 18 issues the PR #1 review found in `_claude/plans/master_plan.md` and `spec/README.md`, so that every command, script and code block in the qfind plan does what its text says.
+**Goal:** Fix all 18 issues the PR #1 review found in `_claude/plans/master_plan.md` and `spec/README.md`, so that every command, script and code block in the qfind plan does what its text says, and so that the CLAUDE.md the plan installs keeps the user's git rule.
 
 **Architecture:** Each fix is a unified diff, made with `diff -u --label` against the text the previous fix leaves, and stored in git-ignored `.scratch/patches/`. Patches 01–11 chain on `_claude/plans/master_plan.md`; patch 12 changes `spec/README.md`. Each task writes a check in git-ignored `.scratch/fixcheck/`, runs it to see it fail, applies its patch with `git apply`, and runs it again to see it pass. The checks test the plan's own text: each one pulls a command, script or Go function out of the plan and runs it, against the GNU find oracle where behaviour matters.
 
@@ -35,7 +35,9 @@ Line numbers are at the PR head, `2475eee5127e734079ee07ab9b2460e6c0c541b2`. "pl
 | O | 25 | "The RSpec suite is the only test bed" sits next to required `.scratch/diff` checks | plan L102, L360 | patch 05, Task 3 |
 | L | 5 | The installed CLAUDE.md paraphrases away the user's own spec rules | plan L378-381 | patch 05, Task 3 |
 
-Patches verified: all 12 apply in order with `git apply --cached` to an index built from `2475eee`, and the result is byte-identical to the copies they were made from (`.scratch/patches/verify`). Each check was run on the text before and after its patch: it failed before and passed after. All 12 checks pass together on the final text. The fixed plan grows from 12,079 to 12,114 lines (117 insertions, 82 deletions); `spec/README.md` gains one line.
+Patch 05 also carries the `## Git` rule of the current `CLAUDE.md` ("Make every commit a clean, new commit. No amending and no force pushing.", added in `d438505` after the review) into the CLAUDE.md that Task 1 installs. Task 1 replaces the whole file, and without this it would drop the rule.
+
+Patches verified: all 12 apply in order with `git apply --cached` to an index built from `HEAD`, and the result is byte-identical to the copies they were made from (`.scratch/patches/verify`). Each check was run on the text before and after its patch: it failed before and passed after. All 12 checks pass together on the final text. The fixed plan grows from 12,079 to 12,118 lines (121 insertions, 82 deletions); `spec/README.md` gains one line.
 
 **Caveats found while generating the patches:**
 - `git apply --check a.patch b.patch` checks every patch against the original file, so a chained patch fails it. `verify` applies the patches in order to a scratch index instead, and execution applies one patch per step.
@@ -48,7 +50,7 @@ Patches verified: all 12 apply in order with `git apply --cached` to an index bu
 ## Global Constraints
 
 - Change only `_claude/plans/master_plan.md` and `spec/README.md`. Patches, checks and their scratch output live in git-ignored `.scratch/` (`.scratch/patches/`, `.scratch/fixcheck/`). Nothing goes under `/tmp`.
-- Start from a clean working tree on `dev` at `2475eee5127e734079ee07ab9b2460e6c0c541b2`.
+- Start from a clean working tree on `dev` in which `_claude/plans/master_plan.md` and `spec/README.md` are still as they were at `2475eee5127e734079ee07ab9b2460e6c0c541b2`. Later commits that touch other files, such as this plan's own commit and the `CLAUDE.md` git rule, do not matter.
 - Apply the patches in numeric order with `git apply`, one per step. Patches 01–11 chain: each was made against the file as the previous patch leaves it, so none applies out of order or twice. If `git apply` fails, stop and report; never edit a hunk by hand.
 - The checks read `_claude/plans/master_plan.md` and `spec/README.md` by default. `PLAN=` and `README=` point them at other copies.
 - `references/go` must exist (`rake references:setup` clones it), and `dist/find` must still be the GNU oracle, as it is at `2475eee`.
@@ -74,14 +76,14 @@ Five conditions that the fixes could break and that no single finding names. Eac
 - Create (git-ignored): `.scratch/fixcheck/01-go-vet.sh`; `.scratch/patches/` and `.scratch/fixcheck/` contents if missing (Step 1)
 
 **Interfaces:**
-- Consumes: the tree at `2475eee`.
+- Consumes: `_claude/plans/master_plan.md` and `spec/README.md` as they were at `2475eee`.
 - Produces: the master plan's Task 1 Step 2 runs `go mod edit -ignore=./references` after `go mod edit -go=1.27`, and Task 15's last gate is `gofmt -l cmd internal; go vet ./...`. Patches 02–11 are made against this text.
 
 - [ ] **Step 1: Confirm the starting point and the patch chain**
 
 ```bash
 git status --short                                  # expect no output
-git rev-parse HEAD                                  # expect 2475eee5127e734079ee07ab9b2460e6c0c541b2
+git diff --quiet 2475eee5127e734079ee07ab9b2460e6c0c541b2 -- _claude/plans/master_plan.md spec/README.md && echo unchanged   # expect: unchanged
 ls .scratch/patches/[0-9][0-9]-*.patch | wc -l      # expect 12
 .scratch/patches/verify
 ```
@@ -754,12 +756,12 @@ git commit -m "Make the qfind plan's RSpec and rake gates show their summaries"
 ### Task 3: Make the plan's Task 1 and its CLAUDE.md match the repo and the plan (issues F, M, D, E, O, L)
 
 **Files:**
-- Modify: `_claude/plans/master_plan.md` — File Structure (L210), Task 1 Files (L222, L224), Step 4 (L288), the installed CLAUDE.md's plan pointer (L364) and Step 9 (L402-410), via patch 04; Goal (L5), Spec (L27), Global Constraints (L102) and the installed CLAUDE.md (L360-361, L376-381), via patch 05
+- Modify: `_claude/plans/master_plan.md` — File Structure (L210), Task 1 Files (L222, L224), Step 4 (L288), the installed CLAUDE.md's plan pointer (L364) and Step 9 (L402-410), via patch 04; Goal (L5), Spec (L27), Global Constraints (L102) and the installed CLAUDE.md (L360-361, L376-382), via patch 05
 - Create (git-ignored): `.scratch/fixcheck/04-plan-location.sh`, `.scratch/fixcheck/05-task-statement.sh`
 
 **Interfaces:**
 - Consumes: Task 2's text.
-- Produces: the installed CLAUDE.md names `_claude/plans/master_plan.md` as the plan; its done criterion reads "15 failures, 547 pending" for a non-root user; it carries the user's original spec rules 1–4 and the shared_examples line word for word. Task 1 Step 9 commits `CLAUDE.md Rakefile go.mod go.sum cmd internal` and copies nothing.
+- Produces: the installed CLAUDE.md names `_claude/plans/master_plan.md` as the plan; its done criterion reads "15 failures, 547 pending" for a non-root user; it carries, word for word, the user's original spec rules 1–4, the shared_examples line and the current `CLAUDE.md`'s `## Git` rule. Task 1 Step 9 commits `CLAUDE.md Rakefile go.mod go.sum cmd internal` and copies nothing.
 
 - [ ] **Step 1: Write the failing plan-location check**
 
@@ -897,7 +899,8 @@ Expected: exit 0: `ok: the installed CLAUDE.md points at the committed plan, _cl
 #!/bin/bash
 # Review issues D, E, O and L: the CLAUDE.md that Task 1 installs, and the
 # plan's own Goal and Spec lines, must agree with the plan's accepted end
-# state, and the installed CLAUDE.md must keep the user's original spec rules.
+# state, and the installed CLAUDE.md must keep the user's original spec rules
+# and the git rule of the current CLAUDE.md.
 set -u
 root=/workspace/qfind.master
 plan=${PLAN:-$root/_claude/plans/master_plan.md}
@@ -927,6 +930,10 @@ has "L: installed CLAUDE.md keeps 'first and foremost' the /rspec skill" "$claud
 while IFS= read -r rule; do
   has "L: keeps the user's rule '${rule:0:40}...'" "$claude" "$rule"
 done < <(git -C "$root" show HEAD:CLAUDE.md | grep -E '^[1-4]\. |^Use rspec features')
+has "git: installed CLAUDE.md has a '## Git' section" "$claude" "## Git"
+while IFS= read -r rule; do
+  has "git: keeps the user's rule '${rule:0:40}...'" "$claude" "$rule"
+done < <(git -C "$root" show HEAD:CLAUDE.md | awk '/^## Git$/ { g = 1; next } g && /^## / { exit } g && NF { print }')
 [ "$fail" -eq 0 ] && echo PASS || echo FAIL
 exit "$fail"
 ````
@@ -934,7 +941,7 @@ exit "$fail"
 - [ ] **Step 6: Run it to see it fail**
 
 Run: `.scratch/fixcheck/05-task-statement.sh`
-Expected: exit 1, with 13 `FAIL:` lines and one `ok:`. The `rlimit_nproc` line already passes, because patch 03 named those examples in the Setup section:
+Expected: exit 1, with 15 `FAIL:` lines and one `ok:`. The `rlimit_nproc` line already passes, because patch 03 named those examples in the Setup section:
 ```
 FAIL: D: installed CLAUDE.md gives the accepted end state
 ok: D: installed CLAUDE.md names the rlimit_nproc examples
@@ -950,6 +957,8 @@ FAIL: L: keeps the user's rule '2. 1 expectation per example. No excepti...'
 FAIL: L: keeps the user's rule '3. Absolutely no comments allowed in the...'
 FAIL: L: keeps the user's rule '4. Constantly reference the rspec source...'
 FAIL: L: keeps the user's rule 'Use rspec features like shared_examples,...'
+FAIL: git: installed CLAUDE.md has a '## Git' section
+FAIL: git: keeps the user's rule 'Make every commit a clean, new commit. N...'
 FAIL
 ```
 
@@ -1000,7 +1009,7 @@ Run: `git apply .scratch/patches/05-task-statement-matches-plan.patch`
  - fastwalk is deliberate: fzf uses it, and fzf is one of the gold-standard CLI tools of the last decade. Use it unmodified and adapt qfind to its model rather than forking it.
  
  The implementation plan is `_claude/plans/master_plan.md`.
-@@ -373,12 +373,16 @@
+@@ -373,12 +373,20 @@
  
  ## The spec suite
  
@@ -1019,6 +1028,10 @@ Run: `git apply .scratch/patches/05-task-statement-matches-plan.patch`
 +4. Constantly reference the rspec source to ensure idiomatic use. It can be found in references/rspec
 +
 +Use rspec features like shared_examples, shared_context etc to keep things DRY and behavior based, if needed
++
++## Git
++
++Make every commit a clean, new commit. No amending and no force pushing.
  ```
  
  - [ ] **Step 8: Save the fastwalk decision to memory**
@@ -1027,7 +1040,7 @@ Run: `git apply .scratch/patches/05-task-statement-matches-plan.patch`
 - [ ] **Step 8: Run the task-statement check to see it pass**
 
 Run: `.scratch/fixcheck/05-task-statement.sh`
-Expected: exit 0, with 14 `ok:` lines and then `PASS`.
+Expected: exit 0, with 16 `ok:` lines and then `PASS`.
 
 - [ ] **Step 9: Commit**
 
@@ -1123,7 +1136,7 @@ Run: `git apply .scratch/patches/06-wrappers-keep-tz.patch`
  `.scratch/failures.rb`:
  ```ruby
  require "json"
-@@ -11262,7 +11262,7 @@
+@@ -11266,7 +11266,7 @@
  - every NaN, exponent and hexadecimal count form;
  - the `-follow` before/after reference-file cases.
  
@@ -1200,7 +1213,7 @@ Run: `git apply .scratch/patches/07-spot-checks-run.patch`
 ````diff
 --- a/_claude/plans/master_plan.md
 +++ b/_claude/plans/master_plan.md
-@@ -3530,7 +3530,7 @@
+@@ -3534,7 +3534,7 @@
  List them with `ruby .scratch/failures.rb`. Spot-check by hand:
  ```bash
  ./dist/find -D opt -O3 . -size 0 -type f -name file 2>&1 >/dev/null | grep -c 'promoting cheap'   # 0 until Tasks 5–11 parse those primaries
@@ -1209,7 +1222,7 @@ Run: `git apply .scratch/patches/07-spot-checks-run.patch`
  ```
  
  - [ ] **Step 13: Review Focus 4 differential check**
-@@ -11711,7 +11711,7 @@
+@@ -11715,7 +11715,7 @@
  ```bash
  bundle exec rake qfind:build
  bundle exec rspec spec/find/tests/{perm,readable,writable,executable,fstype,context}_spec.rb spec/find/options/optimisation_spec.rb spec/find/options/version_spec.rb 2>&1 | grep -E '^[0-9]+ examples?, '
@@ -1282,7 +1295,7 @@ Run: `git apply .scratch/patches/08-pipes-sees-find.patch`
 ````diff
 --- a/_claude/plans/master_plan.md
 +++ b/_claude/plans/master_plan.md
-@@ -3539,12 +3539,13 @@
+@@ -3543,12 +3543,13 @@
  ```bash
  #!/bin/bash
  set -u
@@ -1399,7 +1412,7 @@ Run: `git apply .scratch/patches/09-diffs-compare-records.patch`
 ````diff
 --- a/_claude/plans/master_plan.md
 +++ b/_claude/plans/master_plan.md
-@@ -4427,10 +4427,19 @@
+@@ -4431,10 +4431,19 @@
  D=/workspace/qfind.master/.scratch/diff/manytree
  [ -d "$D" ] || { mkdir -p "$D"; for i in $(seq 1 2000); do mkdir "$D/d$i"; (cd "$D/d$i" && touch $(seq -f f%g 1 100)); done; }
  G=/workspace/qfind.master/findutils-4.11.0/find/find Q=/workspace/qfind.master/dist/find
@@ -1420,7 +1433,7 @@ Run: `git apply .scratch/patches/09-diffs-compare-records.patch`
  `.scratch/diff/huge.sh` (peak RSS must stay below 64 MiB for both runs, since files are never deferred):
  ```bash
  #!/bin/bash
-@@ -9105,7 +9114,8 @@
+@@ -9109,7 +9118,8 @@
  fi
  for loc in C C.UTF-8; do
    for args in "-name *" "-regex .*" "-iregex .*[A-Z].*" "-regex .*[^a].*" "-printf %p|%f|%h\n" "-ls" "-print0"; do
@@ -1587,8 +1600,8 @@ Expected: exit 1. All eight goroutines print, because `fatalf` reports before `e
 ```
 FAIL: one run printed 8 fatal messages
 ok: a write failure inside fatalAt's commit exits 1 with its own message
-1079:	r.dying.Lock()
-1099:Add `dying sync.Mutex` to `Run`.
+1083:	r.dying.Lock()
+1103:Add `dying sync.Mutex` to `Run`.
 FAIL: the plan still refers to the dying lock
 FAIL
 ```
@@ -1611,7 +1624,7 @@ Run: `git apply .scratch/patches/10-fatal-error-prints-once.patch`
    diag.go            errorf/fatalf/exit (close_stdout), writeStderr, debugf, usageFailure, cbyte          [2]  (glibc error, gnulib closeout)
    help.go            --help and --version texts                                                           [2]  (util.c usage, parser.c parse_version)
    predicate.go       Predicate, enums, FuncID, predArgs, apply_predicate                                  [3]  (defs.h, util.c)
-@@ -1054,10 +1054,12 @@
+@@ -1058,10 +1058,12 @@
  func cbyte(b byte) string { return string([]byte{b}) }
  
  // fatalf is error(EXIT_FAILURE, errnum, …): report, then exit(1) through the
@@ -1626,7 +1639,7 @@ Run: `git apply .scratch/patches/10-fatal-error-prints-once.patch`
  }
  
  // usageFailure is usage(EXIT_FAILURE): no program prefix on the hint.
-@@ -1071,12 +1073,26 @@
+@@ -1075,12 +1077,26 @@
  // prints "write error" and forces status 1 (EPIPE included: GNU sets no
  // ignore_EPIPE, and SIGPIPE normally kills the process first).
  //
@@ -1658,7 +1671,7 @@ Run: `git apply .scratch/patches/10-fatal-error-prints-once.patch`
  	if r.out != nil {
  		r.out.flushFilesQuietly() // Task 7: stdio flushes every FILE at exit
  		if err := r.out.closeAll(); err != nil {
-@@ -1096,7 +1112,7 @@
+@@ -1100,7 +1116,7 @@
  	os.Exit(status)
  }
  ```
@@ -1667,7 +1680,7 @@ Run: `git apply .scratch/patches/10-fatal-error-prints-once.patch`
  
  For this task, add a minimal `Output` in `internal/find/output.go` that buffers stdout through `bufio.NewWriterSize(os.Stdout, 64<<10)`. It exposes:
  - `flushForDiagnostic()`;
-@@ -12072,7 +12088,7 @@
+@@ -12076,7 +12092,7 @@
  QFIND_CPUPROFILE=.scratch/cpu.out .scratch/qfind-prof /path/to/tree -name '*.go' >/dev/null
  go tool pprof -top .scratch/qfind-prof .scratch/cpu.out | head -30
  ```
@@ -1792,7 +1805,7 @@ Run: `git apply .scratch/patches/11-only-inherited-fds-stay-open.patch`
 ````diff
 --- a/_claude/plans/master_plan.md
 +++ b/_claude/plans/master_plan.md
-@@ -7267,12 +7267,17 @@
+@@ -7271,12 +7271,17 @@
  	return 128 + 6
  }
  
@@ -1924,14 +1937,14 @@ git commit -m "State the spec audit's real scope in spec/README.md"
 for c in .scratch/fixcheck/[0-9][0-9]-*.sh; do
   printf '%-24s %s\n' "$(basename "$c")" "$(bash "$c" 2>&1 | tail -1)"
 done
-git diff --stat 2475eee5127e734079ee07ab9b2460e6c0c541b2
-git log --oneline 2475eee5127e734079ee07ab9b2460e6c0c541b2..
+git diff --stat 2475eee5127e734079ee07ab9b2460e6c0c541b2 -- _claude/plans/master_plan.md spec/README.md
+git log --oneline 2475eee5127e734079ee07ab9b2460e6c0c541b2.. -- _claude/plans/master_plan.md spec/README.md
 git status --short
 ```
 Expected:
 - all 12 checks print `PASS`;
-- the diffstat lists only `_claude/plans/master_plan.md` (199 lines changed: 117 insertions, 82 deletions) and `spec/README.md` (2 insertions, 1 deletion);
-- six commits, one per task;
+- the diffstat shows `_claude/plans/master_plan.md` with 203 lines changed (121 insertions, 82 deletions) and `spec/README.md` with 2 insertions and 1 deletion;
+- the log shows six commits, one per task;
 - no uncommitted changes (`.scratch/` is git-ignored).
 
 - [ ] **Step 7: Update PR #1 (ask the user first)**
