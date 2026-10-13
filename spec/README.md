@@ -34,7 +34,8 @@ directory gives "No such file or directory" instead of "Permission denied", and 
 
 - **Black box only.** `spec_helper.rb` uses `mock_with :nothing`, so `double`, `allow` and `anything` do
   not exist. Every example reaches find through the helpers below; a runtime audit confirmed that each of
-  the 19,214 examples spawns find at least once.
+  the 18,671 examples that run spawns find at least once. The 543 skipped examples (every pending one
+  except the 4 known bugs, whose bodies run) were not audited.
 - **One expectation per example.** Enforced by rubocop-rspec (`RSpec/MultipleExpectations`). There are
   no compound matchers (`.and`/`.or`).
 - **No comments.** Checked with Ripper over every file in `spec/`. This file is the only place for notes.
