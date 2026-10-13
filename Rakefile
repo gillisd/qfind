@@ -91,6 +91,10 @@ directory archive.extracted_name => [archive.basename] do
   untar archive.basename
 end
 
+directory archive.dist_dir do
+  mkdir_p "dist"
+end
+
 sources = FileList[archive.extracted_name, "#{archive.extracted_name}/find/*", "#{archive.extracted_name}/find/**/*"]
 sources.exclude archive.binname
 
@@ -101,7 +105,7 @@ file archive.binname => sources do
   end
 end
 
-file archive.dist_binname => archive.binname do
+file archive.dist_binname => [archive.dist_dir, archive.binname] do
   ln archive.binname, archive.dist_binname
 end
 
@@ -112,7 +116,7 @@ namespace :upstream do
     puts archive.version
   end
 
-  task :build => archive.binname
+  task :build => archive.dist_binname
 end
 
 CLEAN << archive.basename
