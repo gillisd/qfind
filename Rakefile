@@ -1,5 +1,8 @@
 require 'open3'
 require 'rake/clean'
+require 'rspec/core/rake_task'
+
+RSpec::Core::RakeTask.new
 
 FINDUTILS_VERSION = "v4.11.0"
 
