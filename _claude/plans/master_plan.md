@@ -18,7 +18,7 @@ Concurrency has five rules:
 
   fastwalk keeps reading directories in parallel either way.
 - **`-depth`.** Files are evaluated as they stream. Directories are deferred and evaluated deepest level first, after the starting point's walk.
-- **One way to die.** A fatal error takes a process-wide exit lock, commits the entry being evaluated, then flushes stdout and the output files as gnulib `close_stdout` does. It exits without running pending `-exec … +` command lines.
+- **One way to die.** A fatal error commits the entry being evaluated, then claims the process-wide exit (the first fatal error wins; a later one on another goroutine blocks without printing), reports, and flushes stdout and the output files as gnulib `close_stdout` does. It exits without running pending `-exec … +` command lines.
 
 glibc behaviour that Go does not provide lives in small leaf packages: errno text, quoting, locales, POSIX `TZ` strings, `ARG_MAX`, `rpmatch`, GNU regex and fnmatch, and gnulib modechange, filemode and parse-datetime.
 
@@ -101,6 +101,7 @@ Research that shaped the design (all verified in this session):
 - Traversal uses `github.com/charlievieth/fastwalk` v1.0.14, unmodified, and is the only directory walker.
 - **Do not write any tests in Go.** The RSpec suite is the only test bed in the repository. The Review Focus differential checks in git-ignored `.scratch/diff/` only compare qfind with the oracle; they are not tests. Do not edit `spec/` except where a task explicitly says so; none does.
 - Success means `bundle exec rspec` reports **0 failures and 547 pending**, exactly like `FIND=findutils-4.11.0/find/find bundle exec rspec`. The single exception is the 15 `rlimit_nproc: 0` examples (5 contexts × 3), which no Go runtime can start under. Report them; do not hack around them. As uid 1000, the final run therefore reads **15 failures, 547 pending**, and every failure is one of those contexts.
+- Every RSpec gate pipes its run through `grep -E '^[0-9]+ examples?, '`, which prints only the summary line. If a gate prints nothing, RSpec stopped before its summary; rerun it without the `grep` to see why.
 - Concurrency invariants:
   - every entry's stdout and output-file writes form one atomic transaction;
   - stderr writes are immediate and record-atomic;
@@ -379,10 +380,12 @@ If the specs themselves ever need to change, first and foremost use the /rspec s
 
 1. These are blackbox tests. This means no stubs or mocks. EVERY spec should actually shell out to find/gfind
 2. 1 expectation per example. No exceptions
-3. Absolutely no comments allowed in the specs. Any comments in specs need to be organized into their own specs. Context that cannot become a spec goes in `spec/README.md`.
+3. Absolutely no comments allowed in the specs. Any comments in specs need to be organized into their own specs
 4. Constantly reference the rspec source to ensure idiomatic use. It can be found in references/rspec
 
 Use rspec features like shared_examples, shared_context etc to keep things DRY and behavior based, if needed
+
+Context that cannot become a spec goes in `spec/README.md`.
 
 ## Git
 
