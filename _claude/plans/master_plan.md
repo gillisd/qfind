@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build `qfind`, a parallel Go reimplementation of GNU find 4.11.0 on top of `github.com/charlievieth/fastwalk`, installed as `dist/find`, that passes the existing black-box RSpec suite exactly as GNU find does (0 failures, the same 547 pending examples).
+**Goal:** Build `qfind`, a parallel Go reimplementation of GNU find 4.11.0 on top of `github.com/charlievieth/fastwalk`, installed as `dist/find`, that passes the existing black-box RSpec suite exactly as GNU find does (0 failures, the same 547 pending examples), except for the 15 `rlimit_nproc: 0` examples that no Go binary can start under (Global Constraints).
 
 **Architecture:** Port GNU find's *semantics* faithfully and replace only its *traversal*. The command-line parser (`parser.c`), expression tree builder and optimiser (`tree.c`), predicates (`pred.c`), `-printf`/`-ls` formatting (`print.c`, `listfile.c`), command execution (`exec.c`, `buildcmd.c`) and the per-entry visiting logic (`ftsfind.c consider_visiting`) are ported structure-for-structure into one Go package (`internal/find`). That makes evaluation order, `stat()` timing, diagnostics and `-D` output match GNU at every `-O` level. fts is replaced by fastwalk, used unmodified as fzf uses it. Each starting point is walked in order, and its subtree is walked and evaluated in parallel inside fastwalk's callbacks.
 
@@ -24,7 +24,7 @@ glibc behaviour that Go does not provide lives in small leaf packages: errno tex
 
 **Tech Stack:** Go 1.27 (installed Fedora go1.27.2; `go.env` pins `GOTOOLCHAIN=local`), `github.com/charlievieth/fastwalk` v1.0.14 (unmodified), `golang.org/x/sys/unix`, cgo enabled (for `os/user` NSS lookups). Ruby 4 + RSpec suite in `spec/` is the only test bed. Rake builds everything.
 
-**Spec:** `spec/` (19,214 examples: 18,667 must pass and 547 must stay pending), `spec/README.md` (harness, quirks, the 4 known 4.11.0 bugs that must stay pending) and `CLAUDE.md`. For behaviour questions use the GNU source in `findutils-4.11.0/` (find/*.c, lib/*.c, gl/lib/*.c) and the oracle binary `findutils-4.11.0/find/find`.
+**Spec:** `spec/` (19,214 examples: 547 must stay pending, and the other 18,667 must pass except the 15 accepted `rlimit_nproc: 0` examples), `spec/README.md` (harness, quirks, the 4 known 4.11.0 bugs that must stay pending) and `CLAUDE.md`. For behaviour questions use the GNU source in `findutils-4.11.0/` (find/*.c, lib/*.c, gl/lib/*.c) and the oracle binary `findutils-4.11.0/find/find`.
 
 ## Context
 
@@ -99,7 +99,7 @@ Research that shaped the design (all verified in this session):
 - The binary is `dist/find`, built from Go sources by `rake qfind:build` (`go build -trimpath -o dist/find ./cmd/qfind`). Remove `dist/find` before building, because the old file is a hard link to the GNU binary and a copy-on-build would overwrite it.
 - Use Go only. The module is `qfind` with `go 1.27` in `go.mod`. The installed toolchain is Fedora go1.27.2 with `GOTOOLCHAIN=local`, so never declare a newer `go` line and never use Go 1.28 syntax (`p = {1, 2}`).
 - Traversal uses `github.com/charlievieth/fastwalk` v1.0.14, unmodified, and is the only directory walker.
-- **Do not write any tests in Go.** The RSpec suite is the only test bed. Do not edit `spec/` except where a task explicitly says so; none does.
+- **Do not write any tests in Go.** The RSpec suite is the only test bed in the repository. The Review Focus differential checks in git-ignored `.scratch/diff/` only compare qfind with the oracle; they are not tests. Do not edit `spec/` except where a task explicitly says so; none does.
 - Success means `bundle exec rspec` reports **0 failures and 547 pending**, exactly like `FIND=findutils-4.11.0/find/find bundle exec rspec`. The single exception is the 15 `rlimit_nproc: 0` examples (5 contexts × 3), which no Go runtime can start under. Report them; do not hack around them. As uid 1000, the final run therefore reads **15 failures, 547 pending**, and every failure is one of those contexts.
 - Concurrency invariants:
   - every entry's stdout and output-file writes form one atomic transaction;
@@ -207,7 +207,7 @@ Build and helper files:
 go.mod / go.sum                     module qfind, go 1.27, ignore ./references, fastwalk v1.0.14, x/sys v0.48.0; tool goyacc (x/tools v0.50.0)
 Rakefile                            + qfind:build (dist/find); upstream:build no longer links dist/find
 CLAUDE.md                           qfind task statement (Task 1)
-docs/superpowers/plans/2026-10-13-qfind.md   this plan, committed
+_claude/plans/master_plan.md        this plan (already committed)
 .scratch/gnufind, .scratch/qf       (git-ignored) run the oracle / qfind with the suite's environment
 .scratch/failures.rb                (git-ignored) failures-per-file summary from `rspec --format json`
 .scratch/diff/*.sh                  (git-ignored) differential checks of the Review Focus
@@ -219,9 +219,8 @@ docs/superpowers/plans/2026-10-13-qfind.md   this plan, committed
 
 **Files:**
 - Modify: `CLAUDE.md` (replace whole file)
-- Modify: `Rakefile` (keep the user's `charlievieth/fastwalk` reference; add `qfind` namespace; stop linking GNU find into `dist/`)
+- Modify: `Rakefile` (keep the user's committed `golang/go` and `charlievieth/fastwalk` references; add `qfind` namespace; stop linking GNU find into `dist/`)
 - Create: `go.mod`, `go.sum`, `cmd/qfind/main.go`, `internal/find/main.go`
-- Create: `docs/superpowers/plans/2026-10-13-qfind.md` (copy of this plan)
 - Create (git-ignored): `.scratch/gnufind`, `.scratch/qf`, `.scratch/failures.rb`
 - Memory: `/home/dev/.claude/projects/-workspace-qfind-master/memory/fastwalk-unmodified.md` + `MEMORY.md` line
 
@@ -286,7 +285,7 @@ func Main(args []string) int {
 
 - [ ] **Step 4: Wire the build into the Rakefile**
 
-The working tree already has one Rakefile change from the user: `charlievieth/fastwalk` was added to the `references` repos. Keep it, and commit it with this task.
+The user has already committed two Rakefile changes: `golang/go` and `charlievieth/fastwalk` are in the `references` repos. Keep both.
 
 Make these changes in `namespace :upstream`:
 - delete the `directory archive.dist_dir` and `file archive.dist_binname` tasks;
@@ -358,11 +357,11 @@ Reimplement all of GNU find (findutils 4.11.0) in Go as a new tool, **qfind**, s
 
 - The goal is 100% congruence with GNU find, but with parallelism. It should look, feel and work like GNU find, albeit much faster.
 - An exhaustive black-box RSpec suite has been prepared in `spec/`. It only requires a binary at `dist/find`.
-- Do not write any tests in Go. Rely solely on the spec suite.
-- This is a streaming problem, so order does not matter (GNU find does not guarantee it either). Do not provide any order guarantees.
+- Do not write any tests in Go. Rely solely on the spec suite; the throwaway differential checks against GNU find in git-ignored `.scratch/diff/` are not tests.
+- This is a streaming problem, so order does not matter (GNU find does not guarantee it either). Do not provide any order guarantees beyond what GNU semantics force: starting points in command-line order, a directory before its contents (after them with `-depth`), and one file's actions in sequence.
 - fastwalk is deliberate: fzf uses it, and fzf is one of the gold-standard CLI tools of the last decade. Use it unmodified and adapt qfind to its model rather than forking it.
 
-The implementation plan is `docs/superpowers/plans/2026-10-13-qfind.md`.
+The implementation plan is `_claude/plans/master_plan.md`.
 
 ## Setup
 
@@ -374,12 +373,20 @@ Run `rake` to build everything, then run rubocop and the suite. As a non-root us
 
 ## The spec suite
 
-`spec/` black-boxes `dist/find`, and `spec/README.md` documents its harness and every GNU quirk it pins. qfind is done when `bundle exec rspec` reports 0 failures and 547 pending, exactly as GNU find does. If the specs themselves ever need to change, these rules apply:
+`spec/` black-boxes `dist/find`, and `spec/README.md` documents its harness and every GNU quirk it pins. qfind is done when `bundle exec rspec` matches GNU find: 0 failures and 547 pending, apart from the 15 `rlimit_nproc: 0` examples (5 contexts × 3), which no Go binary can start under. As a non-root user the final run therefore reads 15 failures, 547 pending; report those 15 and do not hack around them. (`spec/README.md`'s "0 failures and 547 pending" is GNU find's result.)
 
-1. These are black-box tests: no stubs or mocks. Every spec shells out to find.
-2. One expectation per example. No exceptions.
-3. Absolutely no comments in the specs; put context in `spec/README.md`.
-4. Use the /rspec skill and constantly reference the rspec source in `references/rspec` for idiomatic use.
+If the specs themselves ever need to change, first and foremost use the /rspec skill, and these rules from the original task apply:
+
+1. These are blackbox tests. This means no stubs or mocks. EVERY spec should actually shell out to find/gfind
+2. 1 expectation per example. No exceptions
+3. Absolutely no comments allowed in the specs. Any comments in specs need to be organized into their own specs. Context that cannot become a spec goes in `spec/README.md`.
+4. Constantly reference the rspec source to ensure idiomatic use. It can be found in references/rspec
+
+Use rspec features like shared_examples, shared_context etc to keep things DRY and behavior based, if needed
+
+## Git
+
+Make every commit a clean, new commit. No amending and no force pushing.
 ```
 
 - [ ] **Step 8: Save the fastwalk decision to memory**
@@ -400,13 +407,12 @@ Build qfind's traversal on github.com/charlievieth/fastwalk as a plain, unmodifi
 ```
 Append to `MEMORY.md`: `- [fastwalk unmodified](fastwalk-unmodified.md) — qfind uses fastwalk as-is like fzf; adapt to its model, don't fork it`
 
-- [ ] **Step 9: Commit the plan copy and scaffolding**
+- [ ] **Step 9: Commit the scaffolding**
 
+The plan is already committed at `_claude/plans/master_plan.md`, so there is nothing to copy.
 ```bash
-mkdir -p docs/superpowers/plans
-cp /home/dev/.claude/plans/reimplement-all-of-gnu-composed-pony.md docs/superpowers/plans/2026-10-13-qfind.md
 gofmt -l cmd internal; go vet ./...
-git add CLAUDE.md Rakefile go.mod go.sum cmd internal docs/superpowers/plans/2026-10-13-qfind.md
+git add CLAUDE.md Rakefile go.mod go.sum cmd internal
 git commit -m "Scaffold qfind: Go module on fastwalk, dist/find build, task statement"
 ```
 
