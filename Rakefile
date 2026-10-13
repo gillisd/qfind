@@ -172,4 +172,4 @@ namespace :references do
   task :setup => dirs
 end
 
-task :default => ["upstream:build", "references:setup"]
+multitask :default => ["upstream:build", "references:setup"]
