@@ -62,18 +62,22 @@ class UpstreamArchive
     "#{extracted_name}.tar.xz"
   end
 
+  def binname
+    Pathname(extracted_name) / "find/find"
+  end
+
+  def dist_dir
+    Pathname("dist")
+  end
+
+  def dist_binname
+    dist_dir / "find"
+  end
+
   private
 
   def stripped_version
     version.gsub(/^v/, "")
-  end
-end
-
-namespace :upstream do
-  desc "Print latest upstream version"
-  task :latest_version do
-    archive = UpstreamArchive.from_basename UpstreamUtils.latest.then { File.basename it }
-    puts archive.version
   end
 end
 
@@ -87,8 +91,31 @@ directory archive.extracted_name => [archive.basename] do
   untar archive.basename
 end
 
+sources = FileList[archive.extracted_name, "#{archive.extracted_name}/find/*", "#{archive.extracted_name}/find/**/*"]
+sources.exclude archive.binname
+
+file archive.binname => sources do
+  chdir archive.extracted_name do
+    run "./configure"
+    run "make"
+  end
+end
+
+file archive.dist_binname => archive.binname do
+  ln archive.binname, archive.dist_binname
+end
+
+namespace :upstream do
+  desc "Print latest upstream version"
+  task :latest_version do
+    archive = UpstreamArchive.from_basename UpstreamUtils.latest.then { File.basename it }
+    puts archive.version
+  end
+
+  task :build => archive.binname
+end
 
 CLEAN << archive.basename
 CLOBBER << archive.extracted_name
 
-task :default => [archive.extracted_name]
+task :default => ["upstream:build"]
