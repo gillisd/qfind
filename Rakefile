@@ -17,6 +17,33 @@ def untar(file)
   run "xz -dc | tar -xv", stdin_data: File.binread(file)
 end
 
+class Reference
+  attr_reader :repo
+
+  def initialize(repo)
+    @repo = repo
+  end
+
+  def dir
+    Pathname("references")
+  end
+
+  def path
+    dir / Pathname(repo).basename
+  end
+end
+
+module ReferenceUtils
+  extend self
+
+  def dir
+  end
+
+  def fetch(reference)
+    run "gh", "repo", "clone", reference.repo.to_s, reference.path.to_s
+  end
+end
+
 module UpstreamUtils
   extend self
 
@@ -81,35 +108,39 @@ class UpstreamArchive
   end
 end
 
-archive = UpstreamArchive.new FINDUTILS_VERSION
-
-file archive.basename do
-  UpstreamUtils.fetch archive
-end
-
-directory archive.extracted_name => [archive.basename] do
-  untar archive.basename
-end
-
-directory archive.dist_dir do
-  mkdir_p "dist"
-end
-
-sources = FileList[archive.extracted_name, "#{archive.extracted_name}/find/*", "#{archive.extracted_name}/find/**/*"]
-sources.exclude archive.binname
-
-file archive.binname => sources do
-  chdir archive.extracted_name do
-    run "./configure"
-    run "make"
-  end
-end
-
-file archive.dist_binname => [archive.dist_dir, archive.binname] do
-  ln archive.binname, archive.dist_binname
-end
-
 namespace :upstream do
+  archive = UpstreamArchive.new FINDUTILS_VERSION
+
+  file archive.basename do
+    UpstreamUtils.fetch archive
+  end
+
+  directory archive.extracted_name => [archive.basename] do
+    untar archive.basename
+  end
+
+  directory archive.dist_dir do
+    mkdir_p "dist"
+  end
+
+  sources = FileList[archive.extracted_name, "#{archive.extracted_name}/find/*", "#{archive.extracted_name}/find/**/*"]
+  sources.exclude archive.binname
+
+  file archive.binname => sources do
+    chdir archive.extracted_name do
+      run "./configure"
+      run "make"
+    end
+  end
+
+  file archive.dist_binname => [archive.dist_dir, archive.binname] do
+    ln archive.binname, archive.dist_binname
+  end
+
+  CLEAN << archive.basename
+  CLOBBER.include FileList[archive.extracted_name, archive.dist_dir]
+
+
   desc "Print latest upstream version"
   task :latest_version do
     archive = UpstreamArchive.from_basename UpstreamUtils.latest.then { File.basename it }
@@ -119,7 +150,27 @@ namespace :upstream do
   task :build => archive.dist_binname
 end
 
-CLEAN << archive.basename
-CLOBBER.include FileList[archive.extracted_name, archive.dist_dir]
+namespace :references do
+  repos = ["rspec/rspec"]
+  references = repos.map { Reference.new it }
+  dirs = FileList.new
+  references.each do |reference|
+    binding.irb
+    directory reference.dir do 
+      mkdir_p reference.dir
+    end
 
-task :default => ["upstream:build"]
+    directory reference.path => [reference.dir] do
+      ReferenceUtils.fetch reference
+    end
+
+    dirs << reference.path
+  end
+
+  CLOBBER.include dirs
+
+  desc "Setup references"
+  task :setup => dirs
+end
+
+task :default => ["upstream:build", "references:setup"]
