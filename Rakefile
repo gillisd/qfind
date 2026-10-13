@@ -40,7 +40,7 @@ module ReferenceUtils
   end
 
   def fetch(reference)
-    run "gh", "repo", "clone", reference.repo.to_s, reference.path.to_s
+    run "gh", "repo", "clone", reference.repo.to_s, reference.path.to_s, "--", "--depth=1"
   end
 end
 
