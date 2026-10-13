@@ -13,4 +13,4 @@ Use rspec features like shared_examples, shared_context etc to keep things DRY a
 
 ## Setup
 
-Run `rake` to build
+Run `rake` to build. `find` should come out in `dist/find`

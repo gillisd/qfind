@@ -120,6 +120,6 @@ namespace :upstream do
 end
 
 CLEAN << archive.basename
-CLOBBER << archive.extracted_name
+CLOBBER.include FileList[archive.extracted_name, archive.dist_dir]
 
 task :default => ["upstream:build"]
