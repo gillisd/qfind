@@ -2,3 +2,4 @@ findutils-4.11.0
 findutils-*.tar.xz
 dist
 references
+spec/examples.txt
