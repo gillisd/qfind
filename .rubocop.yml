@@ -24,6 +24,7 @@ AllCops:
     - findutils*/**/*
     - data/templates/**/*
     - references/**/*
+    - Rakefile
 
 # ===========================================================================
 # Overrides from stock — personal style preferences
