@@ -156,9 +156,6 @@ func Xstrtod(s string) (float64, bool) {
 	return v, true
 }
 
-// IsSpace is isspace(3) in the C locale.
-func IsSpace(c byte) bool { return c == ' ' || (c >= '\t' && c <= '\r') }
-
 func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 func isHex(c byte) bool   { return isDigit(c) || (c|0x20 >= 'a' && c|0x20 <= 'f') }
 func isAlnum(c byte) bool { return isDigit(c) || (c|0x20 >= 'a' && c|0x20 <= 'z') }
