@@ -4,18 +4,30 @@ import (
 	"encoding/binary"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
 // LoadTZ resolves $TZ like glibc tzset(): unset → /etc/localtime (Go's
-// time.Local); empty → UTC; ":name" or "name" → zoneinfo file; otherwise a
-// POSIX rule string such as "EST5" or "JST-9", which Go's time package
-// silently turns into UTC.
+// time.Local); otherwise TZFromString's rules.
 func LoadTZ(lookup func(string) (string, bool)) *time.Location {
 	tz, ok := lookup("TZ")
 	if !ok {
 		return time.Local
 	}
+	return tzFromString(tz, lookup)
+}
+
+// TZFromString is the zone glibc tzset() makes of a set TZ value (gnulib
+// tzalloc(tz), as parse_datetime's TZ="..." prefix uses it): empty → UTC;
+// ":name" or "name" → zoneinfo file under $TZDIR; otherwise a POSIX rule
+// string such as "EST5" or "JST-9", which Go's time package silently turns
+// into UTC.
+func TZFromString(tz string) *time.Location {
+	return tzFromString(tz, os.LookupEnv)
+}
+
+func tzFromString(tz string, lookup func(string) (string, bool)) *time.Location {
 	name := strings.TrimPrefix(tz, ":")
 	if name == "" {
 		return time.UTC
@@ -26,9 +38,23 @@ func LoadTZ(lookup func(string) (string, bool)) *time.Location {
 		}
 	}
 	if loc, err := time.LoadLocationFromTZData(name, posixTZif(name)); err == nil {
+		posixRules.Store(loc, true)
 		return loc
 	}
 	return time.UTC
+}
+
+// posixRules records the locations made from POSIX rule strings.
+var posixRules sync.Map
+
+// IsPOSIXRule reports whether loc came from a POSIX rule string rather
+// than a zoneinfo file. glibc evaluates such a zone without a tzfile, and
+// its localtime then fails (EOVERFLOW) when the UTC year does not fit an
+// int (tzset.c __tz_convert's __offtime(timer, 0, tp)), even if the local
+// year would.
+func IsPOSIXRule(loc *time.Location) bool {
+	_, ok := posixRules.Load(loc)
+	return ok
 }
 
 // tzfilePath is the file glibc's __tzfile_read opens for name: an absolute
