@@ -184,8 +184,8 @@ func (r *Run) recordInheritedFDs() {
 }
 
 // fdSlack covers descriptors opened between childFiles' listing and the
-// fork by goroutines other than fastwalk's workers (the runtime's own).
-const fdSlack = 16
+// fork other than by fastwalk's workers: the runtime's lazy ones.
+const fdSlack = 4
 
 // childFiles builds the child's descriptor table. GNU's fts opens every
 // directory close-on-exec, so a child inherits only what find itself
@@ -194,38 +194,33 @@ const fdSlack = 16
 // descriptor in the child instead (a -1 entry makes the forked child
 // close that number before execve), which leaves no window for a race.
 //
-// A descriptor opened after the listing takes the lowest free number,
-// which is at most the number of descriptors then open: those listed plus
-// one per fastwalk worker (each holds at most one directory) plus slack.
-// So every number up to that bound is either kept or closed.
+// The table must cover every number a descriptor can have at the fork:
+//   - those open at the listing are below its highest one + 1;
+//   - one opened later takes the lowest free number, which is below the
+//     number then open: those listed, plus at most one per fastwalk worker
+//     (each holds one directory at a time), plus slack.
+//
+// It must also fit RLIMIT_NOFILE: Go's child dup3s its error pipe to
+// len(Files)+1 and, for -ok, may move /dev/null to len(Files)+2 (pass 1 of
+// forkAndExecInChild), before it restores the original limit. So the table
+// is capped at the limit minus 3. numWorkers keeps the bound below that
+// cap unless find holds many descriptors of its own (inherited or output
+// files); then the open ones above the cap are set close-on-exec here, and
+// only a descriptor opened in the window while the process is within 3 of
+// its limit could still reach a child.
 //
 // For -ok/-okdir it also reproduces the 4.11.0 bug: fd 0 closed and
-// /dev/null on the descriptor open_safer chose. The returned func closes
-// the parent's copy of /dev/null.
+// /dev/null on the descriptor open_safer chose. /dev/null is opened before
+// the listing so that its number lies inside the table. The returned func
+// closes the parent's copy.
 func (r *Run) childFiles(e *Entry, ev *execVal) ([]uintptr, func()) {
 	const closed = ^uintptr(0)
-	fds, err := openFDs()
-	n := 3
-	if err != nil {
-		n = 1 << 16 // no /proc: close everything RLIMIT_NOFILE may allow
-		var rl unix.Rlimit
-		if unix.Getrlimit(unix.RLIMIT_NOFILE, &rl) == nil && rl.Cur < uint64(n) {
-			n = int(rl.Cur)
-		}
-	}
-	open := make(map[int]bool, len(fds))
-	for _, fd := range fds {
-		open[fd] = true
-		n = max(n, fd+1)
-	}
-	n += r.workers + fdSlack
 	nullFD, target := -1, -1
 	if ev.closeStdin {
 		target = r.okNullFD(e, ev)
 		for r.inheritedFDs[target] {
 			target++
 		}
-		n = max(n, target+1)
 		fd, err := unix.Open(os.DevNull, unix.O_RDONLY|unix.O_CLOEXEC, 0)
 		if err != nil {
 			// prep_child_for_exec: not fatal, the child runs with fd 0 closed.
@@ -233,7 +228,32 @@ func (r *Run) childFiles(e *Entry, ev *execVal) ([]uintptr, func()) {
 		}
 		nullFD = fd
 	}
-	files := make([]uintptr, n)
+	limit := 1 << 16 // no /proc and no limit: close what a default system allows
+	var rl unix.Rlimit
+	if unix.Getrlimit(unix.RLIMIT_NOFILE, &rl) == nil && rl.Cur < uint64(limit) {
+		limit = int(rl.Cur)
+	}
+	fds, err := openFDs()
+	n := limit // no /proc: close everything the limit allows
+	open := make(map[int]bool, len(fds))
+	if err == nil {
+		n = max(3, len(fds)+r.workers+fdSlack, target+1)
+		for _, fd := range fds {
+			open[fd] = true
+			n = max(n, fd+1)
+		}
+	}
+	if n > limit-3 {
+		n = limit - 3
+		for _, fd := range fds {
+			if fd >= n && !r.inheritedFDs[fd] {
+				if flags, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0); err == nil && flags&unix.FD_CLOEXEC == 0 {
+					unix.FcntlInt(uintptr(fd), unix.F_SETFD, flags|unix.FD_CLOEXEC)
+				}
+			}
+		}
+	}
+	files := make([]uintptr, max(n, 3))
 	for i := range files {
 		files[i] = closed
 		if r.inheritedFDs[i] && (open[i] || err != nil) {
@@ -242,7 +262,7 @@ func (r *Run) childFiles(e *Entry, ev *execVal) ([]uintptr, func()) {
 	}
 	if ev.closeStdin {
 		files[0] = closed
-		if nullFD >= 0 {
+		if nullFD >= 0 && target < len(files) {
 			files[target] = uintptr(nullFD)
 		}
 	}
