@@ -1,6 +1,10 @@
 package find
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+
+	"qfind/internal/regex"
+)
 
 // PredType is enum predicate_type (defs.h).
 type PredType uint8
@@ -149,6 +153,7 @@ type predArgs struct {
 	out    *Stream          // printf_vec.stream for the print family
 	format *formatVal       // printf_vec for -printf and -fprintf
 	types  [ftypeCount]bool // -type, -xtype
+	regex  *regex.Regexp    // -regex, -iregex
 }
 
 // is is defs.h pred_is.

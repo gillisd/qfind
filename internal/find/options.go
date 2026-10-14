@@ -53,7 +53,7 @@ type Options struct {
 	OutputBlockSize     int
 	Debug               DebugFlags
 	Symlinks            SymlinkMode
-	RegexSyntax         regex.Syntax // created in Task 10; until then: type Syntax uint32 in internal/regex
+	RegexSyntax         regex.Syntax // -regextype; GNU defaults to RE_SYNTAX_EMACS, not findutils-default
 	OptimisationLevel   int
 	Files0From          string
 	HasFiles0From       bool
