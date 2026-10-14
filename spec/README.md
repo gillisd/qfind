@@ -23,12 +23,17 @@ Expected result as an unprivileged user on Linux: 0 failures and 547 pending.
 | 4 | Known 4.11.0 bugs, written as `pending` examples (see below) |
 | 1 | `:expensive`; passes in about 4.5 s with `RUN_EXPENSIVE_TESTS=yes` |
 
-Running the suite as root swaps the `:root` and `:unprivileged` groups. The `:root` groups really mount
-file systems inside the sandbox and have never been verified; review them before running as root.
+Running the suite as root swaps the `:root` and `:unprivileged` groups; the expected result is then 0
+failures and 554 pending. The `:root` groups really mount file systems and create devices, all inside the
+sandbox, and unmount them afterwards. Under `sudo`, keep the user's gems:
+`sudo env PATH="$PATH" GEM_HOME="$(gem env user_gemhome)" GEM_PATH="$(gem env gempath)" bundle exec rspec`.
 
 Each example gets its own sandbox directory from Ruby's `Dir.mktmpdir`, so it honours `TMPDIR`. Keep it
-on a local POSIX file system such as tmpfs. On this machine `/workspace` is virtiofs, where an unreadable
-directory gives "No such file or directory" instead of "Permission denied", and the permission specs fail.
+on a local POSIX file system such as tmpfs. The suite refuses to start when `TMPDIR` is on virtiofs: there
+an unreadable directory gives "No such file or directory" instead of "Permission denied", even to root, and
+cannot be made readable again, so the permission specs fail and their sandboxes are left behind. On this
+machine `/workspace` is virtiofs; mount a tmpfs for the sandboxes, for example
+`sudo mount -t tmpfs -o size=1g,uid=$(id -u),gid=$(id -g) tmpfs DIR`, and set `TMPDIR=DIR`.
 
 ## How the CLAUDE.md rules are enforced
 
@@ -263,8 +268,9 @@ Actions:
   - `bundle exec rake` exits 0 (rubocop: 113 files, no offenses);
   - the suite also passed with several random seeds, including two concurrent runs;
   - no sandbox directories were left behind.
-- The `:root` groups are unverified: bind mounts, an ext2 loopback mount, `mknod` and `chown` to an
-  unused uid. Their mount hooks were exercised only with `mount`/`umount` stubbed out in a scratch run.
+- Verified at commit `d1cc144` with `TMPDIR` on tmpfs: 0 failures and 547 pending as uid 1000, and 0
+  failures and 554 pending as root. The root run exercises the `:root` groups (bind mounts, an ext2
+  loopback mount, `mknod` and `chown` to an unused uid) and left no mount, loop device or sandbox behind.
 - Platform assumptions: Linux, `/proc`, `/dev/null`, `/dev/full`, the `C.UTF-8` and `en_US.UTF-8`
   locales (gated), and a mount point of another device under `/` for `mount-vs-xdev.sh` (`/dev` here;
   skipped when none exists).

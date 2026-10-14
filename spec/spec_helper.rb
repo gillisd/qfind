@@ -22,6 +22,13 @@ RSpec.configure do |config|
   config.extend OptimisationLevels
   config.include_context "with a sandbox"
 
+  config.before(:suite) do
+    if MountTable.file_system_type(Dir.tmpdir) == "virtiofs"
+      raise "TMPDIR=#{Dir.tmpdir} is on virtiofs, where an unreadable directory reports \"No such file or " \
+            "directory\" and its sandbox cannot be removed; mount a tmpfs for TMPDIR as spec/README.md shows"
+    end
+  end
+
   config.define_derived_metadata(:expensive) do |metadata|
     metadata[:skip] ||= "expensive: set RUN_EXPENSIVE_TESTS=yes to run" unless ENV["RUN_EXPENSIVE_TESTS"] == "yes"
   end
