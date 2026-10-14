@@ -74,7 +74,7 @@ func (w *walker) walkDeep() {
 func (w *walker) walkDeepDir(d deepDir) {
 	fd, err := unix.Open(d.e.sysPath, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 	if err != nil {
-		w.readError(d.e, &fs.PathError{Op: "open", Path: d.e.sysPath, Err: err})
+		w.readError(d.e, false, &fs.PathError{Op: "open", Path: d.e.sysPath, Err: err})
 		return
 	}
 	fw := "/proc/self/fd/" + strconv.Itoa(fd)
