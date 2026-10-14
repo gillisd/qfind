@@ -83,35 +83,35 @@ func init() {
 		{argTest, "empty", parseLater, nil, fnEmpty},           // Task 11
 		{argTest, "executable", parseLater, nil, fnExecutable}, // Task 13
 		{argTest, "false", parseFalse, predFalse, fnFalse},
-		{argTest, "fstype", parseLater, nil, fnFstype},     // Task 13
-		{argTest, "gid", parseLater, nil, fnGid},           // Task 11
-		{argTest, "group", parseLater, nil, fnGroup},       // Task 11
-		{argTest, "ilname", parseLater, nil, fnIlname},     // Task 5
-		{argTest, "iname", parseLater, nil, fnIname},       // Task 5
-		{argTest, "inum", parseLater, nil, fnInum},         // Task 11
-		{argTest, "ipath", parseLater, nil, fnIpath},       // Task 5
-		{argTest, "iregex", parseLater, nil, fnRegex},      // Task 10
-		{argTest, "iwholename", parseLater, nil, fnIpath},  // Task 5
-		{argTest, "links", parseLater, nil, fnLinks},       // Task 11
-		{argTest, "lname", parseLater, nil, fnLname},       // Task 5
-		{argTest, "mmin", parseLater, nil, fnMmin},         // Task 12
-		{argTest, "mtime", parseLater, nil, fnMtime},       // Task 12
-		{argTest, "name", parseLater, nil, fnName},         // Task 5
-		{argTest, "newer", parseLater, nil, fnNewer},       // Task 12
-		{argTest, "nogroup", parseLater, nil, fnNogroup},   // Task 11
-		{argTest, "nouser", parseLater, nil, fnNouser},     // Task 11
-		{argTest, "path", parseLater, nil, fnPath},         // Task 5
+		{argTest, "fstype", parseLater, nil, fnFstype}, // Task 13
+		{argTest, "gid", parseLater, nil, fnGid},       // Task 11
+		{argTest, "group", parseLater, nil, fnGroup},   // Task 11
+		{argTest, "ilname", parseIlname, predIlname, fnIlname},
+		{argTest, "iname", parseIname, predIname, fnIname},
+		{argTest, "inum", parseLater, nil, fnInum}, // Task 11
+		{argTest, "ipath", parseIpath, predIpath, fnIpath},
+		{argTest, "iregex", parseLater, nil, fnRegex}, // Task 10
+		{argTest, "iwholename", parseIwholename, predIpath, fnIpath},
+		{argTest, "links", parseLater, nil, fnLinks}, // Task 11
+		{argTest, "lname", parseLname, predLname, fnLname},
+		{argTest, "mmin", parseLater, nil, fnMmin},   // Task 12
+		{argTest, "mtime", parseLater, nil, fnMtime}, // Task 12
+		{argTest, "name", parseName, predName, fnName},
+		{argTest, "newer", parseLater, nil, fnNewer},     // Task 12
+		{argTest, "nogroup", parseLater, nil, fnNogroup}, // Task 11
+		{argTest, "nouser", parseLater, nil, fnNouser},   // Task 11
+		{argTest, "path", parsePath, predPath, fnPath},
 		{argTest, "perm", parseLater, nil, fnPerm},         // Task 13
 		{argTest, "readable", parseLater, nil, fnReadable}, // Task 13
 		{argTest, "regex", parseLater, nil, fnRegex},       // Task 10
 		{argTest, "samefile", parseLater, nil, fnSamefile}, // Task 11
 		{argTest, "size", parseLater, nil, fnSize},         // Task 11
 		{argTest, "true", parseTrue, predTrue, fnTrue},
-		{argTest, "type", parseLater, nil, fnType},         // Task 6
-		{argTest, "uid", parseLater, nil, fnUid},           // Task 11
-		{argTest, "used", parseLater, nil, fnUsed},         // Task 12
-		{argTest, "user", parseLater, nil, fnUser},         // Task 11
-		{argTest, "wholename", parseLater, nil, fnPath},    // Task 5
+		{argTest, "type", parseLater, nil, fnType}, // Task 6
+		{argTest, "uid", parseLater, nil, fnUid},   // Task 11
+		{argTest, "used", parseLater, nil, fnUsed}, // Task 12
+		{argTest, "user", parseLater, nil, fnUser}, // Task 11
+		{argTest, "wholename", parseWholename, predPath, fnPath},
 		{argTest, "writable", parseLater, nil, fnWritable}, // Task 13
 		{argTest, "xtype", parseLater, nil, fnXtype},       // Task 6
 		{argAction, "delete", parseLater, nil, fnDelete},   // Task 9
