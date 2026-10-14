@@ -73,44 +73,44 @@ func init() {
 		{argPunctuation, "and", parseAnd, predAnd, fnAnd},
 		{argPunctuation, "o", parseOr, predOr, fnOr},
 		{argPunctuation, "or", parseOr, predOr, fnOr},
-		{argTest, "amin", parseLater, nil, fnAmin},             // Task 12
-		{argTest, "anewer", parseLater, nil, fnAnewer},         // Task 12
-		{argTest, "atime", parseLater, nil, fnAtime},           // Task 12
-		{argTest, "cmin", parseLater, nil, fnCmin},             // Task 12
-		{argTest, "cnewer", parseLater, nil, fnCnewer},         // Task 12
-		{argTest, "ctime", parseLater, nil, fnCtime},           // Task 12
-		{argTest, "context", parseLater, nil, fnContext},       // Task 13
-		{argTest, "empty", parseLater, nil, fnEmpty},           // Task 11
+		{argTest, "amin", parseXmin, predAmin, fnAmin},
+		{argTest, "anewer", parseAnewer, predAnewer, fnAnewer},
+		{argTest, "atime", parseTime, predAtime, fnAtime},
+		{argTest, "cmin", parseXmin, predCmin, fnCmin},
+		{argTest, "cnewer", parseCnewer, predCnewer, fnCnewer},
+		{argTest, "ctime", parseTime, predCtime, fnCtime},
+		{argTest, "context", parseLater, nil, fnContext}, // Task 13
+		{argTest, "empty", parseEmpty, predEmpty, fnEmpty},
 		{argTest, "executable", parseLater, nil, fnExecutable}, // Task 13
 		{argTest, "false", parseFalse, predFalse, fnFalse},
 		{argTest, "fstype", parseLater, nil, fnFstype}, // Task 13
-		{argTest, "gid", parseLater, nil, fnGid},       // Task 11
-		{argTest, "group", parseLater, nil, fnGroup},   // Task 11
+		{argTest, "gid", parseGid, predGid, fnGid},
+		{argTest, "group", parseGroup, predGroup, fnGroup},
 		{argTest, "ilname", parseIlname, predIlname, fnIlname},
 		{argTest, "iname", parseIname, predIname, fnIname},
-		{argTest, "inum", parseLater, nil, fnInum}, // Task 11
+		{argTest, "inum", parseInum, predInum, fnInum},
 		{argTest, "ipath", parseIpath, predIpath, fnIpath},
 		{argTest, "iregex", parseIregex, predRegex, fnRegex},
 		{argTest, "iwholename", parseIwholename, predIpath, fnIpath},
-		{argTest, "links", parseLater, nil, fnLinks}, // Task 11
+		{argTest, "links", parseLinks, predLinks, fnLinks},
 		{argTest, "lname", parseLname, predLname, fnLname},
-		{argTest, "mmin", parseLater, nil, fnMmin},   // Task 12
-		{argTest, "mtime", parseLater, nil, fnMtime}, // Task 12
+		{argTest, "mmin", parseXmin, predMmin, fnMmin},
+		{argTest, "mtime", parseTime, predMtime, fnMtime},
 		{argTest, "name", parseName, predName, fnName},
-		{argTest, "newer", parseLater, nil, fnNewer},     // Task 12
-		{argTest, "nogroup", parseLater, nil, fnNogroup}, // Task 11
-		{argTest, "nouser", parseLater, nil, fnNouser},   // Task 11
+		{argTest, "newer", parseNewer, predNewer, fnNewer},
+		{argTest, "nogroup", parseNogroup, predNogroup, fnNogroup},
+		{argTest, "nouser", parseNouser, predNouser, fnNouser},
 		{argTest, "path", parsePath, predPath, fnPath},
 		{argTest, "perm", parseLater, nil, fnPerm},         // Task 13
 		{argTest, "readable", parseLater, nil, fnReadable}, // Task 13
 		{argTest, "regex", parseRegex, predRegex, fnRegex},
-		{argTest, "samefile", parseLater, nil, fnSamefile}, // Task 11
-		{argTest, "size", parseLater, nil, fnSize},         // Task 11
+		{argTest, "samefile", parseSamefile, predSamefile, fnSamefile},
+		{argTest, "size", parseSize, predSize, fnSize},
 		{argTest, "true", parseTrue, predTrue, fnTrue},
 		{argTest, "type", parseType, predType, fnType},
-		{argTest, "uid", parseLater, nil, fnUid},   // Task 11
-		{argTest, "used", parseLater, nil, fnUsed}, // Task 12
-		{argTest, "user", parseLater, nil, fnUser}, // Task 11
+		{argTest, "uid", parseUid, predUid, fnUid},
+		{argTest, "used", parseUsed, predUsed, fnUsed},
+		{argTest, "user", parseUser, predUser, fnUser},
 		{argTest, "wholename", parseWholename, predPath, fnPath},
 		{argTest, "writable", parseLater, nil, fnWritable}, // Task 13
 		{argTest, "xtype", parseXtype, predXtype, fnXtype},
@@ -131,7 +131,7 @@ func init() {
 		{argAction, "quit", parseQuit, predQuit, fnQuit},
 		{argNoop, "--noop", nil, predTrue, fnTrue},
 	}
-	parseEntryNewerXY = parserEntry{argSpecialParse, "newerXY", parseLater, nil, fnNewerXY} // Task 12
+	parseEntryNewerXY = parserEntry{argSpecialParse, "newerXY", parseNewerXY, predNewerXY, fnNewerXY}
 }
 
 // lookupEntry finds a table entry by its parser_name.

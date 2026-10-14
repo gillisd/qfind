@@ -43,6 +43,7 @@ type Run struct {
 	execMu       sync.Mutex    // one child at a time
 	stdin        *bufio.Reader // find's stdin, read by the -ok question
 	inheritedFDs map[int]bool  // non-close-on-exec descriptors at startup
+	heldFDs      []int         // -samefile reference files, held open for the run (parse_samefile)
 }
 
 func newRun(args []string) *Run {

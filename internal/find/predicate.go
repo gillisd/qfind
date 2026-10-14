@@ -155,6 +155,14 @@ type predArgs struct {
 	types  [ftypeCount]bool // -type, -xtype
 	exec   *execVal         // -exec, -execdir, -ok, -okdir
 	regex  *regex.Regexp    // -regex, -iregex
+
+	num      numInfo  // numinfo: -inum, -links, -uid, -gid
+	size     sizeInfo // -size
+	uid      uint32   // -user
+	gid      uint32   // -group
+	samefile devIno   // samefileid
+
+	reftime timeVal // -amin … -used, -newer family, -newerXY
 }
 
 // is is defs.h pred_is.
