@@ -1,6 +1,12 @@
 package find
 
-import "golang.org/x/sys/unix"
+import (
+	"io/fs"
+	"strings"
+	"sync/atomic"
+
+	"golang.org/x/sys/unix"
+)
 
 const (
 	unixS_IFMT  = unix.S_IFMT
@@ -9,6 +15,41 @@ const (
 	unixS_IFREG = unix.S_IFREG
 )
 
+// ftsInfo is the fts_info value consider_visiting switches on.
+type ftsInfo uint8
+
+const (
+	ftsD ftsInfo = iota
+	ftsDC
+	ftsDNR
+	ftsDP
+	ftsERR
+	ftsF
+	ftsNS
+	ftsNSOK
+	ftsSL
+	ftsSLNONE
+	ftsDEFAULT
+)
+
+var ftsInfoNames = [...]string{"FTS_D", "FTS_DC", "FTS_DNR", "FTS_DP", "FTS_ERR",
+	"FTS_F", "FTS_NS", "FTS_NSOK", "FTS_SL", "FTS_SLNONE", "FTS_DEFAULT"}
+
+// statInfo is the fts_info fts_stat gives a successfully stat'ed entry.
+// FTS_DEFAULT (FIFOs, sockets, devices) behaves like FTS_F everywhere but
+// in -D search narration.
+func statInfo(mode uint32) ftsInfo {
+	switch mode & unix.S_IFMT {
+	case unix.S_IFDIR:
+		return ftsD
+	case unix.S_IFLNK:
+		return ftsSL
+	case unix.S_IFREG:
+		return ftsF
+	}
+	return ftsDEFAULT
+}
+
 // Entry is GNU's per-file `state` plus the fts path fields.
 type Entry struct {
 	path          string // fts_path, as printed and quoted in messages
@@ -16,13 +57,80 @@ type Entry struct {
 	name          string // fts_name: the directory entry's name; the argument at depth 0
 	accPath       string // fts_accpath = state.rel_pathname: name at depth >= 1 (full path under -L), the argument at 0
 	depth         int    // fts_level
+	startLen      int    // state.starting_path_length: the length of this entry's start point (%H, %P)
 	haveStat      bool
 	haveType      bool
 	mode          uint32 // state.type (S_IFMT bits, full st_mode once stat'ed)
 	st            unix.Stat_t
-	issuedStatErr bool // already_issued_stat_error_msg
-	prune         bool // stop_at_current_level
+	issuedStatErr bool        // already_issued_stat_error_msg
+	prune         bool        // stop_at_current_level
+	cancelled     atomic.Bool // fts will never return this directory's FTS_DP (FTS_ERR, vanished under -ignore_readdir_race)
 	txn           txn
+}
+
+// setType records a d_type-derived type without a stat (FTS_NSOK).
+func (e *Entry) setType(m fs.FileMode) {
+	switch {
+	case m.IsDir():
+		e.mode = unix.S_IFDIR
+	case m&fs.ModeSymlink != 0:
+		e.mode = unix.S_IFLNK
+	case m&fs.ModeNamedPipe != 0:
+		e.mode = unix.S_IFIFO
+	case m&fs.ModeSocket != 0:
+		e.mode = unix.S_IFSOCK
+	case m&fs.ModeCharDevice != 0:
+		e.mode = unix.S_IFCHR
+	case m&fs.ModeDevice != 0:
+		e.mode = unix.S_IFBLK
+	default:
+		e.mode = unix.S_IFREG
+	}
+	e.haveType = true
+}
+
+func (e *Entry) setStat(st *unix.Stat_t) {
+	e.st, e.haveStat, e.haveType, e.mode = *st, true, true, st.Mode
+}
+
+func (e *Entry) isDir() bool { return e.mode&unix.S_IFMT == unix.S_IFDIR }
+
+// dirPath is the working directory -execdir uses for the entry: its parent
+// directory below a start point (record_exec_dir's directory relative to
+// fts's cwd), gnulib mdir_name(argument) for the start point itself. It is
+// a system-call path: below a start point it comes from sysPath, which
+// fastwalk builds as parent + "/" + name.
+func (e *Entry) dirPath() string {
+	if e.depth > 0 {
+		d := strings.TrimRight(e.sysPath[:len(e.sysPath)-len(e.name)], "/")
+		if d == "" {
+			return "/"
+		}
+		return d
+	}
+	return mdirName(e.path)
+}
+
+// mdirName is gnulib mdir_name: the directory part without trailing
+// slashes, "." when there is none, "/" for the root ("/" → "/",
+// "tmp/top/" → "tmp", "a" → ".", "/a" → "/", "a//b" → "a").
+func mdirName(p string) string {
+	end := len(p)
+	for end > 1 && p[end-1] == '/' {
+		end--
+	}
+	q := p[:end]
+	i := strings.LastIndexByte(q, '/')
+	switch {
+	case i < 0:
+		return "."
+	case i == 0:
+		return "/"
+	}
+	for i > 1 && q[i-1] == '/' {
+		i--
+	}
+	return q[:i]
 }
 
 // getInfo is util.c get_info.
@@ -53,7 +161,7 @@ func (r *Run) getStatinfo(e *Entry) bool {
 			return false
 		}
 		if st.Mode == 0 {
-			r.errorf(nil, "WARNING: file %s appears to have mode 0000", r.quote(e.accPath)) // GNU quotes `name`
+			r.errorAt(e, nil, "WARNING: file %s appears to have mode 0000", r.quote(e.accPath)) // GNU quotes `name`
 			r.setFailure()
 		}
 		e.st = st
@@ -94,10 +202,10 @@ func (r *Run) xstatName(path, shown string, depth int) (unix.Stat_t, error) {
 }
 
 // nonfatalTargetFileError is util.c report_file_err(0, errno, true, path):
-// one message per entry.
+// one message per entry, after e's earlier output (see errorAt).
 func (r *Run) nonfatalTargetFileError(e *Entry, err error) {
 	if !e.issuedStatErr {
-		r.errorf(err, "%s", r.quote(e.path))
+		r.errorAt(e, err, "%s", r.quote(e.path))
 		r.setFailure()
 	}
 	e.issuedStatErr = true

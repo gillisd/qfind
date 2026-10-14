@@ -1,57 +1,76 @@
 package find
 
-import "golang.org/x/sys/unix"
+import (
+	"github.com/charlievieth/fastwalk"
+	"golang.org/x/sys/unix"
+)
 
-// processAllStartPoints is ftsfind.c process_all_startpoints (argv form;
-// -files0-from arrives in Task 4). An empty name is reported and skipped,
-// and makes the result false, so main skips the success rates and
-// cleanup() as GNU does.
-func (r *Run) processAllStartPoints() bool {
-	if len(r.startPoints) == 0 {
-		return r.findRoot(".")
-	}
-	ok := true
-	for _, name := range r.startPoints {
-		if name == "" {
-			r.errorf(unix.ENOENT, "%s", r.quote(name))
-			r.setFailure()
-			ok = false
-			continue
-		}
-		if !r.findRoot(name) {
-			return false
-		}
-	}
-	return ok
+// walker is the state of one fastwalk.Walk below a start point (Task 15
+// adds walks re-rooted at /proc/self/fd/N for very deep directories).
+type walker struct {
+	r         *Run
+	rp        rootPaths
+	root      *Entry // the directory this Walk starts at
+	baseDepth int    // fts_level of root: 0 for a start point
+	rootDev   uint64 // the start point's device (-xdev, -mount)
+	dirs      *dirTree
+	defers    *deferredDirs
 }
 
-// findRoot evaluates a starting point at depth 0 (descent: Task 4). The
-// stat is fts_open's fts_stat: -H and -L follow a link and fall back to
-// the link itself only on ENOENT (FTS_SLNONE), never with debug_stat.
+// findRoot is ftsfind.c find(): classify and visit the start point, then
+// let fastwalk walk below it. A start point that is not a directory to
+// descend never reaches fastwalk (-files0-from may supply 100,000 of them).
 func (r *Run) findRoot(arg string) bool {
-	e := &Entry{path: arg, sysPath: arg, name: arg, accPath: arg}
-	var st unix.Stat_t
-	var err error
-	if r.opt.Symlinks == SymlinkNeverDeref {
-		err = unix.Lstat(arg, &st)
-	} else if err = unix.Stat(arg, &st); err == unix.ENOENT && unix.Lstat(arg, &st) == nil {
-		err = nil
-		// consider_visiting: FTS_SLNONE is checked for a link loop
-		// through options.xstat.
-		if _, lerr := r.xstat(e); lerr == unix.ELOOP {
-			err = lerr
-		}
+	w := &walker{r: r, rp: newRootPaths(arg), dirs: &dirTree{}, defers: &deferredDirs{}}
+	root := &Entry{path: arg, sysPath: arg, name: arg, accPath: arg, startLen: len(arg)}
+	w.root = root
+	info, err := r.rootInfo(root)
+	if w.considerRoot(root, info, err) {
+		w.dirs.add(w.rp.fw, &dirNode{dev: root.st.Dev, ino: root.st.Ino, entry: root})
+		w.rootDev = root.st.Dev
+		w.walk()
 	}
-	if err != nil {
-		r.nonfatalTargetFileError(e, err)
-		return true
-	}
-	e.st, e.haveStat, e.haveType, e.mode = st, true, true, st.Mode
-	if r.opt.MinDepth <= 0 {
-		r.visit(e)
-	}
+	w.runDeferred()
+	r.afterRoot()
 	return true
 }
+
+// walk runs fastwalk over w.rp's root. The callbacks never return an error
+// that aborts the walk, so an error here is Walk's own os.Stat of the
+// root, which lost a race with a rename: report it as a read error.
+func (w *walker) walk() {
+	conf := &fastwalk.Config{NumWorkers: w.r.workers, Sort: fastwalk.SortNone}
+	if w.r.opt.MaxDepth > 0 {
+		conf.MaxDepth = w.r.opt.MaxDepth - w.baseDepth // fastwalk counts from its own root
+	}
+	if err := fastwalk.Walk(conf, w.rp.fw, w.callback); err != nil {
+		w.readError(w.root, err)
+	}
+}
+
+// rootInfo is fts_open/fts_stat for a level-0 entry: lstat under -P;
+// stat with FTS_COMFOLLOW under -H/-L, where only ENOENT falls back to
+// lstat, as FTS_SLNONE (fts_stat, not util.c fallback_stat: ENOTDIR,
+// EACCES and ELOOP are FTS_NS). fts's stats never print debug_stat.
+func (r *Run) rootInfo(e *Entry) (ftsInfo, error) {
+	var st unix.Stat_t
+	if r.opt.Symlinks == SymlinkNeverDeref {
+		if err := unix.Lstat(e.sysPath, &st); err != nil {
+			return ftsNS, err
+		}
+	} else if err := unix.Stat(e.sysPath, &st); err != nil {
+		if err != unix.ENOENT || unix.Lstat(e.sysPath, &st) != nil {
+			return ftsNS, err
+		}
+		e.setStat(&st)
+		return ftsSLNONE, nil
+	}
+	e.setStat(&st)
+	return statInfo(st.Mode), nil
+}
+
+// afterRoot runs per-start-point completions (Task 8: pending -execdir +).
+func (r *Run) afterRoot() {}
 
 // visit is ftsfind.c visit.
 func (r *Run) visit(e *Entry) {

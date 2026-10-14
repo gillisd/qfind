@@ -216,6 +216,17 @@ func (r *Run) fatalAt(e *Entry, err error, format string, a ...any) {
 	r.fatalf(err, format, a...)
 }
 
+// errorAt is errorf for a non-fatal diagnostic raised while considering or
+// evaluating e. glibc error() flushes stdout before printing, and GNU's
+// stdout buffer already holds e's earlier output, so commit e's
+// transaction first: in a merged stream the message follows that output.
+func (r *Run) errorAt(e *Entry, err error, format string, a ...any) {
+	if e != nil {
+		r.commit(e)
+	}
+	r.errorf(err, format, a...)
+}
+
 // flushForDiagnostic is the fflush(stdout) inside glibc error().
 func (o *Output) flushForDiagnostic() {
 	o.mu.Lock()

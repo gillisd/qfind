@@ -26,6 +26,15 @@ type Run struct {
 	startPoints  []string    // the command-line starting points (tree.c start_points)
 	tree         *Predicate  // the evaluation tree (eval_tree)
 	preds        *Predicate  // the command-line predicate list (predicates)
+
+	// Traversal (Task 4). GNU considers one entry at a time; qfind does so
+	// only when that is observable across entries (needsSerial), holding
+	// evalMu around consider_visiting and every visit.
+	serial        bool
+	evalMu        sync.Mutex
+	workers       int          // fastwalk's NumWorkers
+	prevDepth     atomic.Int64 // ftsfind.c prev_depth, for -D search
+	formatFlushes bool         // a format contains \c (Task 7)
 }
 
 func newRun(args []string) *Run {
