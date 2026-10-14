@@ -12,6 +12,7 @@ import (
 // Main runs find with argv and returns the exit status (ftsfind.c main).
 func Main(args []string) int {
 	r := newRun(args)
+	r.recordInheritedFDs()
 	r.out = newOutput(r)
 	r.setDefaults()
 	end := r.processLeadingOptions(args)

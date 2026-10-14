@@ -1,6 +1,7 @@
 package find
 
 import (
+	"bufio"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -37,6 +38,11 @@ type Run struct {
 	prevDepth     atomic.Int64 // ftsfind.c prev_depth, for -D search
 	formatFlushes bool         // a format contains \c (Task 7)
 	slot0         quoteSlot0
+
+	// Command execution (Task 8).
+	execMu       sync.Mutex    // one child at a time
+	stdin        *bufio.Reader // find's stdin, read by the -ok question
+	inheritedFDs map[int]bool  // non-close-on-exec descriptors at startup
 }
 
 func newRun(args []string) *Run {

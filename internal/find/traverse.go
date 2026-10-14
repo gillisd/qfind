@@ -69,8 +69,9 @@ func (r *Run) rootInfo(e *Entry) (ftsInfo, error) {
 	return statInfo(st.Mode), nil
 }
 
-// afterRoot runs per-start-point completions (Task 8: pending -execdir +).
-func (r *Run) afterRoot() {}
+// afterRoot runs the pending -execdir … + command lines, so that one
+// never spans starting points (GNU runs them whenever fts changes level).
+func (r *Run) afterRoot() { r.completePendingExecdirs(r.tree) }
 
 // visit is ftsfind.c visit.
 func (r *Run) visit(e *Entry) {
@@ -78,8 +79,11 @@ func (r *Run) visit(e *Entry) {
 	r.commit(e)
 }
 
-// cleanup is util.c cleanup (Tasks 7–8 add exec batches and shared files).
+// cleanup is util.c cleanup: pending command lines first, then the
+// shared output files, then fflush(stdout).
 func (r *Run) cleanup() {
+	r.completePendingExecs(r.tree)
+	r.completePendingExecdirs(r.tree)
 	r.closeSharedFiles()
 	r.cleanupFlush()
 }
