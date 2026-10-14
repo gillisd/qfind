@@ -149,6 +149,7 @@ type predArgs struct {
 	out    *Stream          // printf_vec.stream for the print family
 	format *formatVal       // printf_vec for -printf and -fprintf
 	types  [ftypeCount]bool // -type, -xtype
+	exec   *execVal         // -exec, -execdir, -ok, -okdir
 }
 
 // is is defs.h pred_is.

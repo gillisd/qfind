@@ -33,7 +33,10 @@ func getPredCost(p *Predicate) Cost {
 	inherent := NeedsUnknown
 	switch {
 	case p.is(fnExec) || p.is(fnExecdir) || p.is(fnOk) || p.is(fnOkdir): // predicate_uses_exec
-		inherent = NeedsImmediateExec // Task 8 adds: NeedsEventualExec when p.args.exec.multiple
+		inherent = NeedsImmediateExec
+		if p.args.exec.multiple {
+			inherent = NeedsEventualExec
+		}
 	case p.is(fnFprintf):
 		inherent = p.cost // computed by the -printf parser (Task 7)
 	default:
