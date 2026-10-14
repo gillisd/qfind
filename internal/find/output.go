@@ -3,6 +3,7 @@ package find
 import (
 	"errors"
 	"os"
+	"strings"
 	"sync"
 
 	"golang.org/x/sys/unix"
@@ -117,16 +118,31 @@ func (r *Run) emitChecked(e *Entry, s *Stream, text string, fail failMode) {
 }
 
 // emitRendered queues a record whose calls are produced at commit time.
+// On stderr the record is written at once, in one write so that no other
+// goroutine's record lands inside it; unbuffered stderr fails at its
+// first call, so a failure reports the first piece's stage.
 func (r *Run) emitRendered(e *Entry, s *Stream, render func() []piece) {
 	if s.sink == nil {
-		for _, pc := range render() {
-			if err := r.writeStderr(pc.text); err != nil {
-				r.fatalf(err, "Failed to write output (at stage %d)", pc.stage)
-			}
-		}
+		r.writeRenderedStderr(render(), "")
 		return
 	}
 	e.txn.items = append(e.txn.items, pending{s: s, fail: failFatal, render: render})
+}
+
+// writeRenderedStderr writes a rendered record, then extra, to stderr in
+// one write, dying with the record's first stage if it fails.
+func (r *Run) writeRenderedStderr(ps []piece, extra string) {
+	if len(ps) == 0 {
+		return
+	}
+	var b strings.Builder
+	for _, pc := range ps {
+		b.WriteString(pc.text)
+	}
+	b.WriteString(extra)
+	if err := r.writeStderr(b.String()); err != nil {
+		r.fatalf(err, "Failed to write output (at stage %d)", ps[0].stage)
+	}
 }
 
 // emitQuoted is lib/printquoted.c print_quoted(fp, …, "%s<suffix>", name).

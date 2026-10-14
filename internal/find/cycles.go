@@ -1,6 +1,9 @@
 package find
 
-import "sync"
+import (
+	"sync"
+	"sync/atomic"
+)
 
 // dirNode is one directory on the active path: (dev, ino) plus its parent.
 // fastwalk gives no "directory finished" event, so nodes live until the
@@ -8,7 +11,8 @@ import "sync"
 type dirNode struct {
 	dev, ino uint64
 	parent   *dirNode
-	entry    *Entry // the directory itself: read errors report it, -depth visits it
+	entry    *Entry       // the directory itself: read errors report it, -depth visits it
+	nitems   atomic.Int64 // children fastwalk has delivered: fts_build's nitems
 }
 
 type dirTree struct{ m sync.Map } // fastwalk dir path → *dirNode

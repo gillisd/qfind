@@ -44,7 +44,7 @@ func (w *walker) walk() {
 		conf.MaxDepth = w.r.opt.MaxDepth - w.baseDepth // fastwalk counts from its own root
 	}
 	if err := fastwalk.Walk(conf, w.rp.fw, w.callback); err != nil {
-		w.readError(w.root, err)
+		w.readError(w.root, false, err)
 	}
 }
 

@@ -114,14 +114,14 @@ func init() {
 		{argTest, "wholename", parseWholename, predPath, fnPath},
 		{argTest, "writable", parseLater, nil, fnWritable}, // Task 13
 		{argTest, "xtype", parseXtype, predXtype, fnXtype},
-		{argAction, "delete", parseLater, nil, fnDelete}, // Task 9
+		{argAction, "delete", parseDelete, predDelete, fnDelete},
 		{argAction, "exec", parseExec, predExec, fnExec},
 		{argAction, "execdir", parseExecdir, predExec, fnExecdir},
-		{argAction, "fls", parseLater, nil, fnFls}, // Task 9
+		{argAction, "fls", parseFls, predLs, fnFls},
 		{argAction, "fprint", parseFprint, predPrint, fnFprint},
 		{argAction, "fprint0", parseFprint0, predPrint0, fnFprint0},
 		{argAction, "fprintf", parseFprintf, predFprintf, fnFprintf},
-		{argAction, "ls", parseLater, nil, fnLs}, // Task 9
+		{argAction, "ls", parseLs, predLs, fnLs},
 		{argAction, "ok", parseOk, predExec, fnOk},
 		{argAction, "okdir", parseOkdir, predExec, fnOkdir},
 		{argAction, "print", parsePrint, predPrint, fnPrint},
