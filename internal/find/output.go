@@ -234,8 +234,21 @@ func (o *Output) flushForDiagnostic() {
 	o.mu.Unlock()
 }
 
-// flushFilesQuietly is exit()'s flush of every other FILE; Task 7 fills it.
-func (o *Output) flushFilesQuietly() {}
+// flushFilesQuietly is exit()'s _IO_cleanup flush of every FILE still
+// open: errors are ignored here; only fclose in cleanup reports them.
+func (o *Output) flushFilesQuietly() {
+	reg := &o.r.shared
+	reg.mu.Lock()
+	files := reg.order.all()
+	reg.mu.Unlock()
+	for _, sf := range files {
+		sf.lock()
+		if !sf.closed {
+			sf.flush()
+		}
+		sf.unlock()
+	}
+}
 
 // WriteString writes usage, version and -D help text (no entry).
 func (o *Output) WriteString(s string) {

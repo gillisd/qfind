@@ -67,8 +67,8 @@ func (r *Run) usageFailure() {
 }
 
 // exit is exit(status) with gnulib close_stdout() registered via atexit:
-// shared output files are flushed, then stdout is closed; a stdout failure
-// prints "write error" and forces status 1 (EPIPE included: GNU sets no
+// stdout is closed, then stdio flushes the shared output files; a stdout
+// failure prints "write error" and exits 1 at once (EPIPE included: GNU sets no
 // ignore_EPIPE, and SIGPIPE normally kills the process first).
 //
 // exit is the only way out of the process; see claimExit.
@@ -94,21 +94,25 @@ func (r *Run) claimExit() {
 
 // exitClaimed is exit's work once the caller holds the claim.
 func (r *Run) exitClaimed(status int) {
+	// close_stdout runs first, from atexit; a stdout failure _exit(1)s,
+	// which skips stdio's flush of the other FILEs (gl/lib/closeout.c).
 	if r.out != nil {
-		r.out.flushFilesQuietly() // Task 7: stdio flushes every FILE at exit
 		if err := r.out.closeAll(); err != nil {
 			if err == errPrevFailed {
 				r.errorf(nil, "write error")
 			} else {
 				r.errorf(err, "write error")
 			}
-			status = 1
+			os.Exit(1)
 		}
 	}
 	// close_stdout also runs close_stream(stderr): after any failed write to
 	// stderr (2>/dev/full), it calls _exit(EXIT_FAILURE) without a message.
 	if r.stderrFailed.Load() {
-		status = 1
+		os.Exit(1)
+	}
+	if r.out != nil {
+		r.out.flushFilesQuietly() // exit()'s _IO_cleanup flushes every other FILE
 	}
 	os.Exit(status)
 }

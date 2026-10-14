@@ -118,15 +118,15 @@ func init() {
 		{argAction, "exec", parseLater, nil, fnExec},       // Task 8
 		{argAction, "execdir", parseLater, nil, fnExecdir}, // Task 8
 		{argAction, "fls", parseLater, nil, fnFls},         // Task 9
-		{argAction, "fprint", parseLater, nil, fnFprint},   // Task 7
-		{argAction, "fprint0", parseLater, nil, fnFprint0}, // Task 7
-		{argAction, "fprintf", parseLater, nil, fnFprintf}, // Task 7
-		{argAction, "ls", parseLater, nil, fnLs},           // Task 9
-		{argAction, "ok", parseLater, nil, fnOk},           // Task 8
-		{argAction, "okdir", parseLater, nil, fnOkdir},     // Task 8
+		{argAction, "fprint", parseFprint, predPrint, fnFprint},
+		{argAction, "fprint0", parseFprint0, predPrint0, fnFprint0},
+		{argAction, "fprintf", parseFprintf, predFprintf, fnFprintf},
+		{argAction, "ls", parseLater, nil, fnLs},       // Task 9
+		{argAction, "ok", parseLater, nil, fnOk},       // Task 8
+		{argAction, "okdir", parseLater, nil, fnOkdir}, // Task 8
 		{argAction, "print", parsePrint, predPrint, fnPrint},
 		{argAction, "print0", parsePrint0, predPrint0, fnPrint0},
-		{argAction, "printf", parseLater, nil, fnFprintf}, // Task 7
+		{argAction, "printf", parsePrintf, predFprintf, fnFprintf},
 		{argAction, "prune", parsePrune, predPrune, fnPrune},
 		{argAction, "quit", parseQuit, predQuit, fnQuit},
 		{argNoop, "--noop", nil, predTrue, fnTrue},

@@ -80,5 +80,6 @@ func (r *Run) visit(e *Entry) {
 
 // cleanup is util.c cleanup (Tasks 7–8 add exec batches and shared files).
 func (r *Run) cleanup() {
+	r.closeSharedFiles()
 	r.cleanupFlush()
 }

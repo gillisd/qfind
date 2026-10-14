@@ -17,7 +17,8 @@ type Run struct {
 	loc          libc.Locale
 	tz           *time.Location
 	env          []string
-	out          *Output // Task 3
+	out          *Output       // Task 3
+	shared       shareRegistry // state.shared_files (Task 7)
 	stderrMu     sync.Mutex
 	stderrFailed atomic.Bool // ferror(stderr): close_stdout then exits 1
 	exitStatus   atomic.Int32
