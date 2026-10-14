@@ -62,7 +62,7 @@ func init() {
 		{argPositionalOption, "daystart", parseDaystart, nil, fnNone},
 		{argPositionalOption, "follow", parseFollow, nil, fnNone},
 		{argPositionalOption, "nowarn", parseNowarn, nil, fnNone},
-		{argPositionalOption, "regextype", parseLater, nil, fnNone}, // Task 10
+		{argPositionalOption, "regextype", parseRegextype, nil, fnNone},
 		{argPositionalOption, "warn", parseWarn, nil, fnNone},
 		{argPunctuation, "!", parseNegate, predNegate, fnNegate},
 		{argPunctuation, "not", parseNegate, predNegate, fnNegate},
@@ -90,7 +90,7 @@ func init() {
 		{argTest, "iname", parseIname, predIname, fnIname},
 		{argTest, "inum", parseLater, nil, fnInum}, // Task 11
 		{argTest, "ipath", parseIpath, predIpath, fnIpath},
-		{argTest, "iregex", parseLater, nil, fnRegex}, // Task 10
+		{argTest, "iregex", parseIregex, predRegex, fnRegex},
 		{argTest, "iwholename", parseIwholename, predIpath, fnIpath},
 		{argTest, "links", parseLater, nil, fnLinks}, // Task 11
 		{argTest, "lname", parseLname, predLname, fnLname},
@@ -103,7 +103,7 @@ func init() {
 		{argTest, "path", parsePath, predPath, fnPath},
 		{argTest, "perm", parseLater, nil, fnPerm},         // Task 13
 		{argTest, "readable", parseLater, nil, fnReadable}, // Task 13
-		{argTest, "regex", parseLater, nil, fnRegex},       // Task 10
+		{argTest, "regex", parseRegex, predRegex, fnRegex},
 		{argTest, "samefile", parseLater, nil, fnSamefile}, // Task 11
 		{argTest, "size", parseLater, nil, fnSize},         // Task 11
 		{argTest, "true", parseTrue, predTrue, fnTrue},
