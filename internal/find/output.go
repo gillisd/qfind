@@ -123,15 +123,15 @@ func (r *Run) emitChecked(e *Entry, s *Stream, text string, fail failMode) {
 // first call, so a failure reports the first piece's stage.
 func (r *Run) emitRendered(e *Entry, s *Stream, render func() []piece) {
 	if s.sink == nil {
-		r.writeRenderedStderr(render(), "")
+		r.writeRenderedStderr(render())
 		return
 	}
 	e.txn.items = append(e.txn.items, pending{s: s, fail: failFatal, render: render})
 }
 
-// writeRenderedStderr writes a rendered record, then extra, to stderr in
-// one write, dying with the record's first stage if it fails.
-func (r *Run) writeRenderedStderr(ps []piece, extra string) {
+// writeRenderedStderr writes a rendered record to stderr in one write,
+// dying with the record's first stage if it fails.
+func (r *Run) writeRenderedStderr(ps []piece) {
 	if len(ps) == 0 {
 		return
 	}
@@ -139,7 +139,6 @@ func (r *Run) writeRenderedStderr(ps []piece, extra string) {
 	for _, pc := range ps {
 		b.WriteString(pc.text)
 	}
-	b.WriteString(extra)
 	if err := r.writeStderr(b.String()); err != nil {
 		r.fatalf(err, "Failed to write output (at stage %d)", ps[0].stage)
 	}
