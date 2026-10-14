@@ -5,8 +5,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// walker is the state of one fastwalk.Walk below a start point (Task 15
-// adds walks re-rooted at /proc/self/fd/N for very deep directories).
+// walker is the state of one fastwalk.Walk below a start point, or below
+// a very deep directory re-rooted at /proc/self/fd/N (deep.go).
 type walker struct {
 	r         *Run
 	rp        rootPaths
@@ -15,20 +15,27 @@ type walker struct {
 	rootDev   uint64 // the start point's device (-xdev, -mount)
 	dirs      *dirTree
 	defers    *deferredDirs
+	deep      *deepQueue // directories to re-root at /proc/self/fd/N (deep.go)
 }
 
 // findRoot is ftsfind.c find(): classify and visit the start point, then
 // let fastwalk walk below it. A start point that is not a directory to
 // descend never reaches fastwalk (-files0-from may supply 100,000 of them).
 func (r *Run) findRoot(arg string) bool {
-	w := &walker{r: r, rp: newRootPaths(arg), dirs: &dirTree{}, defers: &deferredDirs{}}
+	w := &walker{r: r, rp: newRootPaths(arg), dirs: &dirTree{}, defers: &deferredDirs{}, deep: &deepQueue{}}
 	root := &Entry{path: arg, sysPath: arg, name: arg, accPath: arg, startLen: len(arg)}
 	w.root = root
 	info, err := r.rootInfo(root)
 	if w.considerRoot(root, info, err) {
-		w.dirs.add(w.rp.fw, &dirNode{dev: root.st.Dev, ino: root.st.Ino, entry: root})
+		node := &dirNode{dev: root.st.Dev, ino: root.st.Ino, entry: root}
 		w.rootDev = root.st.Dev
-		w.walk()
+		if r.reroots(w.rp.fw) { // a start point too long for its children's paths
+			w.walkDeepDir(deepDir{root, node, w.rp.prefix})
+		} else {
+			w.dirs.add(w.rp.fw, node)
+			w.walk()
+			w.walkDeep()
+		}
 	}
 	w.runDeferred()
 	r.afterRoot()

@@ -109,6 +109,10 @@ func (w *walker) considerDir(e *Entry, key string, parent *dirNode, viaLink bool
 	if !descend {
 		return skip(viaLink)
 	}
+	if r.reroots(key) {
+		w.deepen(e, w.dirs.get(key))
+		return skip(viaLink)
+	}
 	if viaLink {
 		return fastwalk.ErrTraverseLink
 	}
