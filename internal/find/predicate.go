@@ -145,8 +145,9 @@ type Predicate struct {
 // port predicates (regex, exec, num, size, uid, gid, reftime, perm,
 // samefile, types, format, scontext).
 type predArgs struct {
-	str string  // fstype, [i]lname, [i]name, [i]path
-	out *Stream // printf_vec.stream for the print family
+	str   string           // fstype, [i]lname, [i]name, [i]path
+	out   *Stream          // printf_vec.stream for the print family
+	types [ftypeCount]bool // -type, -xtype
 }
 
 // is is defs.h pred_is.

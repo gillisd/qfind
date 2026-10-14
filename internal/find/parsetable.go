@@ -107,13 +107,13 @@ func init() {
 		{argTest, "samefile", parseLater, nil, fnSamefile}, // Task 11
 		{argTest, "size", parseLater, nil, fnSize},         // Task 11
 		{argTest, "true", parseTrue, predTrue, fnTrue},
-		{argTest, "type", parseLater, nil, fnType}, // Task 6
+		{argTest, "type", parseType, predType, fnType},
 		{argTest, "uid", parseLater, nil, fnUid},   // Task 11
 		{argTest, "used", parseLater, nil, fnUsed}, // Task 12
 		{argTest, "user", parseLater, nil, fnUser}, // Task 11
 		{argTest, "wholename", parseWholename, predPath, fnPath},
 		{argTest, "writable", parseLater, nil, fnWritable}, // Task 13
-		{argTest, "xtype", parseLater, nil, fnXtype},       // Task 6
+		{argTest, "xtype", parseXtype, predXtype, fnXtype},
 		{argAction, "delete", parseLater, nil, fnDelete},   // Task 9
 		{argAction, "exec", parseLater, nil, fnExec},       // Task 8
 		{argAction, "execdir", parseLater, nil, fnExecdir}, // Task 8
