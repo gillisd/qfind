@@ -27,14 +27,18 @@ func (r *Run) findRoot(arg string) bool {
 	w.root = root
 	info, err := r.rootInfo(root)
 	if w.considerRoot(root, info, err) {
-		w.dirs.add(w.rp.fw, &dirNode{dev: root.st.Dev, ino: root.st.Ino, entry: root})
+		node := &dirNode{dev: root.st.Dev, ino: root.st.Ino, entry: root}
 		w.rootDev = root.st.Dev
-		w.walk()
-		w.walkDeep()
+		if r.reroots(w.rp.fw) { // a start point too long for its children's paths
+			w.walkDeepDir(deepDir{root, node, w.rp.prefix})
+		} else {
+			w.dirs.add(w.rp.fw, node)
+			w.walk()
+			w.walkDeep()
+		}
 	}
 	w.runDeferred()
 	r.afterRoot()
-	w.closeDeep() // -depth visits and -execdir batches above may use /proc/self/fd/N
 	return true
 }
 

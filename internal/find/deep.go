@@ -19,65 +19,73 @@ import (
 // entry too long to stat, which is still visited).
 const deepThreshold = unix.PathMax - 255 - 2
 
-// deepDir is a directory to walk from /proc/self/fd/<fd>.
-type deepDir struct {
-	e    *Entry
-	node *dirNode
-	fd   int
+// reroots reports whether a directory whose fastwalk path is key must be
+// walked from /proc/self/fd/N instead.
+func (r *Run) reroots(key string) bool {
+	return len(key) > deepThreshold && r.opt.Symlinks != SymlinkAlwaysDeref
 }
 
-// deepQueue is shared by every walker of one start point.
+// deepDir is a directory to walk from /proc/self/fd/<fd>, once opened.
+type deepDir struct {
+	e      *Entry
+	node   *dirNode
+	prefix string // fts child prefix: the directory's fts_path plus "/"
+}
+
+// deepQueue collects one walk's deep directories; that walk's callbacks
+// append to it concurrently.
 type deepQueue struct {
 	mu   sync.Mutex
 	todo []deepDir
-	fds  []int // kept open until the start point is finished
 }
 
 // deepen is called by considerDir instead of letting fastwalk descend
 // into a directory whose path is too long. The directory has already
 // been considered (visited, or deferred under -depth); only its walk is
-// postponed. It reports false when the directory cannot be opened, which
-// is fts's FTS_DNR. The descriptor is O_CLOEXEC, so no child inherits it.
-func (w *walker) deepen(e *Entry, key string, node *dirNode) bool {
-	fd, err := unix.Open(e.sysPath, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
-	if err != nil {
-		w.readError(e, &fs.PathError{Op: "open", Path: key, Err: err})
-		return false
-	}
+// postponed. Nothing is opened yet: descriptors are opened one subtree at
+// a time (walkDeepDir), so their number does not grow with fan-out.
+func (w *walker) deepen(e *Entry, node *dirNode) {
 	w.deep.mu.Lock()
-	w.deep.todo = append(w.deep.todo, deepDir{e, node, fd})
-	w.deep.fds = append(w.deep.fds, fd)
+	w.deep.todo = append(w.deep.todo, deepDir{e, node, e.path + "/"})
 	w.deep.mu.Unlock()
-	return true
 }
 
-// walkDeep walks every postponed directory, and the ones those walks
-// postpone in turn. Each walk shares the start point's dirTree (cycle
-// detection) and deferred list (-depth).
+// walkDeep walks the directories w's finished walk postponed, one after
+// another. Their sysPaths may live below w's own /proc/self/fd/N, which
+// stays open until this returns.
 func (w *walker) walkDeep() {
-	for {
-		w.deep.mu.Lock()
-		if len(w.deep.todo) == 0 {
-			w.deep.mu.Unlock()
-			return
-		}
-		d := w.deep.todo[0]
-		w.deep.todo = w.deep.todo[1:]
-		w.deep.mu.Unlock()
-		fw := "/proc/self/fd/" + strconv.Itoa(d.fd)
-		w.dirs.add(fw, d.node)
-		nw := *w
-		nw.rp = rootPaths{arg: d.e.path, fw: fw, fwSep: fw + "/", prefix: d.e.path + "/"}
-		nw.root, nw.baseDepth = d.e, d.e.depth
-		nw.walk()
+	w.deep.mu.Lock()
+	todo := w.deep.todo
+	w.deep.todo = nil
+	w.deep.mu.Unlock()
+	for _, d := range todo {
+		w.walkDeepDir(d)
 	}
 }
 
-// closeDeep closes the re-rooting descriptors once nothing can use a
-// sysPath below them: after the deferred visits and pending -execdir runs.
-func (w *walker) closeDeep() {
-	for _, fd := range w.deep.fds {
-		unix.Close(fd)
+// walkDeepDir opens d (failure is fts's FTS_DNR) and finishes its whole
+// subtree before closing the descriptor: the walk, the deep directories
+// it postpones in turn, the deferred -depth visits below d (all of them
+// descendants of d, so visiting them now is a valid post-order; d itself
+// is deferred in its parent's walk), and the pending -execdir … + command
+// lines, whose working directories may be /proc/self/fd/N paths. At any
+// time only the chain of re-rooted ancestors holds descriptors, one per
+// ~3,800 bytes of path. O_CLOEXEC keeps them from every child.
+func (w *walker) walkDeepDir(d deepDir) {
+	fd, err := unix.Open(d.e.sysPath, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		w.readError(d.e, &fs.PathError{Op: "open", Path: d.e.sysPath, Err: err})
+		return
 	}
-	w.deep.fds = nil
+	fw := "/proc/self/fd/" + strconv.Itoa(fd)
+	nw := *w
+	nw.rp = rootPaths{arg: d.e.path, fw: fw, fwSep: fw + "/", prefix: d.prefix}
+	nw.root, nw.baseDepth = d.e, d.e.depth
+	nw.dirs, nw.defers, nw.deep = &dirTree{}, &deferredDirs{}, &deepQueue{} // keys and fds are this walk's own
+	nw.dirs.add(fw, d.node)
+	nw.walk()
+	nw.walkDeep()
+	nw.runDeferred()
+	w.r.completePendingExecdirs(w.r.tree)
+	unix.Close(fd)
 }
