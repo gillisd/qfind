@@ -37,6 +37,7 @@ type Run struct {
 	prevDepth     atomic.Int64 // ftsfind.c prev_depth, for -D search
 	formatFlushes bool         // a format contains \c (Task 7)
 	slot0         quoteSlot0
+	heldFDs       []int // -samefile reference files, held open for the run (parse_samefile)
 }
 
 func newRun(args []string) *Run {
