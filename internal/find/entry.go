@@ -53,7 +53,7 @@ func statInfo(mode uint32) ftsInfo {
 // Entry is GNU's per-file `state` plus the fts path fields.
 type Entry struct {
 	path          string // fts_path, as printed and quoted in messages
-	sysPath       string // the path every system call uses: fastwalk's, always shorter than PATH_MAX (Task 15)
+	sysPath       string // the path every system call uses: fastwalk's, always shorter than PATH_MAX (deep.go re-roots deep walks)
 	name          string // fts_name: the directory entry's name; the argument at depth 0
 	accPath       string // fts_accpath = state.rel_pathname: name at depth >= 1 (full path under -L), the argument at 0
 	depth         int    // fts_level
