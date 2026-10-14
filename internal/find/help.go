@@ -1,6 +1,10 @@
 package find
 
-import "fmt"
+import (
+	"fmt"
+
+	"qfind/internal/mounts"
+)
 
 const usageBody = `
 Default path is the current directory; default expression is -print.
@@ -60,7 +64,7 @@ There is NO WARRANTY, to the extent permitted by law.
 
 Written by Eric B. Decker, James Youngman, Bernhard Voelker,
 and Kevin Dalley.
-Features enabled: D_TYPE O_NOFOLLOW(enabled) LEAF_OPTIMISATION FTS(FTS_CWDFD) CBO(level=%d) ` + "\n"
+Features enabled: D_TYPE O_NOFOLLOW(enabled) LEAF_OPTIMISATION %sFTS(FTS_CWDFD) CBO(level=%d) ` + "\n"
 
 // usage is util.c usage(EXIT_SUCCESS). Both the synopsis and
 // explain_how_to_report_bugs print program_name, which is argv[0].
@@ -74,6 +78,10 @@ func (r *Run) usage() {
 
 // version is parser.c parse_version (version_etc + the Features line).
 func (r *Run) version() {
-	r.out.WriteString(fmt.Sprintf(versionText, r.opt.OptimisationLevel))
+	selinux := ""
+	if mounts.SELinuxEnabled() {
+		selinux = "SELINUX "
+	}
+	r.out.WriteString(fmt.Sprintf(versionText, selinux, r.opt.OptimisationLevel))
 	r.exit(0)
 }

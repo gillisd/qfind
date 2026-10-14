@@ -79,11 +79,11 @@ func init() {
 		{argTest, "cmin", parseXmin, predCmin, fnCmin},
 		{argTest, "cnewer", parseCnewer, predCnewer, fnCnewer},
 		{argTest, "ctime", parseTime, predCtime, fnCtime},
-		{argTest, "context", parseLater, nil, fnContext}, // Task 13
+		{argTest, "context", parseContext, predContext, fnContext},
 		{argTest, "empty", parseEmpty, predEmpty, fnEmpty},
-		{argTest, "executable", parseLater, nil, fnExecutable}, // Task 13
+		{argTest, "executable", parseAccesscheck, predExecutable, fnExecutable},
 		{argTest, "false", parseFalse, predFalse, fnFalse},
-		{argTest, "fstype", parseLater, nil, fnFstype}, // Task 13
+		{argTest, "fstype", parseFstype, predFstype, fnFstype},
 		{argTest, "gid", parseGid, predGid, fnGid},
 		{argTest, "group", parseGroup, predGroup, fnGroup},
 		{argTest, "ilname", parseIlname, predIlname, fnIlname},
@@ -101,8 +101,8 @@ func init() {
 		{argTest, "nogroup", parseNogroup, predNogroup, fnNogroup},
 		{argTest, "nouser", parseNouser, predNouser, fnNouser},
 		{argTest, "path", parsePath, predPath, fnPath},
-		{argTest, "perm", parseLater, nil, fnPerm},         // Task 13
-		{argTest, "readable", parseLater, nil, fnReadable}, // Task 13
+		{argTest, "perm", parsePerm, predPerm, fnPerm},
+		{argTest, "readable", parseAccesscheck, predReadable, fnReadable},
 		{argTest, "regex", parseRegex, predRegex, fnRegex},
 		{argTest, "samefile", parseSamefile, predSamefile, fnSamefile},
 		{argTest, "size", parseSize, predSize, fnSize},
@@ -112,7 +112,7 @@ func init() {
 		{argTest, "used", parseUsed, predUsed, fnUsed},
 		{argTest, "user", parseUser, predUser, fnUser},
 		{argTest, "wholename", parseWholename, predPath, fnPath},
-		{argTest, "writable", parseLater, nil, fnWritable}, // Task 13
+		{argTest, "writable", parseAccesscheck, predWritable, fnWritable},
 		{argTest, "xtype", parseXtype, predXtype, fnXtype},
 		{argAction, "delete", parseLater, nil, fnDelete}, // Task 9
 		{argAction, "exec", parseExec, predExec, fnExec},
