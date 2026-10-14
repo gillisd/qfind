@@ -25,6 +25,7 @@ AllCops:
     - data/templates/**/*
     - references/**/*
     - Rakefile
+    - .scratch/**/*
 
 # ===========================================================================
 # Overrides from stock — personal style preferences
