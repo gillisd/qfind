@@ -3,12 +3,20 @@ package main
 
 import (
 	"os"
+	"runtime/debug"
 	"runtime/pprof"
 
 	"qfind/internal/find"
 )
 
 func main() {
+	// fastwalk alone allocates about 100 bytes per entry, and at the
+	// default GOGC=100 the heap is collected every few MB: GOGC=400 walks
+	// a warm 1M-file tree 20% faster for about 20 MB more memory. An
+	// explicit GOGC in the environment still wins.
+	if _, ok := os.LookupEnv("GOGC"); !ok {
+		debug.SetGCPercent(400)
+	}
 	// QFIND_CPUPROFILE=file writes a CPU profile of the run; find stops it
 	// through BeforeExit, because the process ends in os.Exit.
 	if path := os.Getenv("QFIND_CPUPROFILE"); path != "" {
