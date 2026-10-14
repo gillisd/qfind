@@ -155,6 +155,8 @@ type predArgs struct {
 	uid      uint32   // -user
 	gid      uint32   // -group
 	samefile devIno   // samefileid
+
+	reftime timeVal // -amin … -used, -newer family, -newerXY
 }
 
 // is is defs.h pred_is.
