@@ -163,6 +163,7 @@ type predArgs struct {
 	samefile devIno   // samefileid
 
 	reftime timeVal // -amin … -used, -newer family, -newerXY
+	perm    permVal // -perm
 }
 
 // is is defs.h pred_is.
