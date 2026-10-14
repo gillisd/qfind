@@ -35,6 +35,7 @@ type Run struct {
 	workers       int          // fastwalk's NumWorkers
 	prevDepth     atomic.Int64 // ftsfind.c prev_depth, for -D search
 	formatFlushes bool         // a format contains \c (Task 7)
+	slot0         quoteSlot0
 }
 
 func newRun(args []string) *Run {
@@ -52,5 +53,40 @@ func (r *Run) lookupEnv(name string) (string, bool) { return os.LookupEnv(name) 
 
 func (r *Run) setFailure() { r.exitStatus.Store(1) }
 
-// quote is safely_quote_err_filename: locale_quoting_style.
-func (r *Run) quote(s string) string { return r.loc.Quote(s) }
+// quote is safely_quote_err_filename(0, s): locale_quoting_style in
+// quotearg slot 0, which it also records (see slot0).
+func (r *Run) quote(s string) string {
+	q := r.loc.Quote(s)
+	r.slot0.store(q)
+	return q
+}
+
+// quoteN is quotearg_n_style(n, locale_quoting_style, s) for a slot n > 0.
+func (r *Run) quoteN(s string) string { return r.loc.Quote(s) }
+
+// quoteSlot0 is gnulib quotearg's static slot0 buffer. ftsfind.c keeps a
+// pointer into it as files0_filename_quoted, so its -files0-from messages
+// name whatever slot 0 quoted last (4.11.0 bug). A quote of 256 bytes or
+// more moves slot 0 to the heap for good; its first pass has filled the
+// static buffer with the quote's first 256 bytes and no terminator (the
+// oracle then reads a zero byte after it), and that buffer stays frozen.
+type quoteSlot0 struct {
+	mu     sync.Mutex
+	s      string
+	frozen bool
+}
+
+func (q *quoteSlot0) store(s string) {
+	q.mu.Lock()
+	if !q.frozen {
+		q.s = s[:min(len(s), 256)]
+		q.frozen = len(s) >= 256
+	}
+	q.mu.Unlock()
+}
+
+func (q *quoteSlot0) load() string {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.s
+}

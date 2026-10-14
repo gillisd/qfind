@@ -52,27 +52,28 @@ func (r *Run) processAllStartPoints() bool {
 		}
 		in = f
 	}
-	if !r.findFiles0(bufio.NewReaderSize(in, 64<<10), quoted) {
+	if !r.findFiles0(bufio.NewReaderSize(in, 64<<10)) {
 		return false
 	}
 	// GNU fcloses the stream, stdin included, so commands run by cleanup()
 	// (pending -exec … +) start with fd 0 closed after -files0-from -.
 	if in.Close() != nil {
-		r.fatalf(nil, "error reading %s", quoted)
+		r.fatalf(nil, "error reading %s", r.slot0.load())
 	}
 	return true
 }
 
 // findFiles0 is the argv_iter loop over a NUL-separated stream: getdelim
 // returns a last item without a terminating NUL, and data read before a
-// failing read(2) is still an item, so the read error comes after it.
-func (r *Run) findFiles0(br *bufio.Reader, quoted string) bool {
+// failing read(2) is still an item, so the read error comes after it. Its
+// messages name files0_filename_quoted, a pointer into quotearg slot 0.
+func (r *Run) findFiles0(br *bufio.Reader) bool {
 	ok := true
 	for n := 1; ; n++ {
 		item, err := br.ReadString(0)
 		if item != "" {
 			if item = strings.TrimSuffix(item, "\x00"); item == "" {
-				r.errorf(nil, "%s:%d: %s", quoted, n, "invalid zero-length file name")
+				r.errorf(nil, "%s:%d: %s", r.slot0.load(), n, "invalid zero-length file name")
 				r.setFailure()
 				ok = false
 			} else if !r.findRoot(item) {
@@ -83,7 +84,7 @@ func (r *Run) findFiles0(br *bufio.Reader, quoted string) bool {
 		case errors.Is(err, io.EOF):
 			return ok
 		case err != nil:
-			r.errorf(err, "%s: read error", quoted)
+			r.errorf(err, "%s: read error", r.slot0.load())
 			r.setFailure()
 			return false
 		}

@@ -286,7 +286,7 @@ func (w *walker) narrateEarly(e *Entry, info ftsInfo) {
 	}
 	prev := r.prevDepth.Swap(int64(e.depth))
 	r.debugf("consider_visiting (early): %s: fts_info=%-6s, fts_level=%2d, prev_depth=%d fts_path=%s, fts_accpath=%s\n",
-		r.quote(e.path), ftsInfoNames[info], e.depth, prev, r.quote(e.path), r.quote(e.accPath))
+		r.quote(e.path), ftsInfoNames[info], e.depth, prev, r.quoteN(e.path), r.quoteN(e.accPath))
 }
 
 // symlinkLoop is ftsfind.c symlink_loop: options.xstat (so it shows under
