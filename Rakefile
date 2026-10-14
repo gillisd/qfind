@@ -159,13 +159,16 @@ end
 
 namespace :qfind do
   binary = "dist/find"
-  sources = FileList["go.mod", "go.sum", "cmd/**/*.go", "internal/**/*.go", "internal/**/*.y"]
+  sources = FileList["Rakefile", "go.mod", "go.sum", "cmd/**/*.go", "internal/**/*.go", "internal/**/*.y"]
 
   directory "dist"
 
   file binary => ["dist", *sources] do
     rm_f binary
-    run "go", "build", "-trimpath", "-o", binary, "./cmd/qfind"
+    # Async preemption off by default: its SIGURG cuts getdents short, and on
+    # virtiofs the resumed read skips entries while -delete removes them.
+    # An explicit GODEBUG in the environment still overrides this.
+    run "go", "build", "-trimpath", "-ldflags=-X=runtime.godebugDefault=asyncpreemptoff=1", "-o", binary, "./cmd/qfind"
   end
 
   desc "Build qfind into dist/find"

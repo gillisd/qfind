@@ -25,7 +25,8 @@ func (w *walker) callback(path string, d fs.DirEntry, err error) error {
 	de := d.(fastwalk.DirEntry)
 	depth := de.Depth()
 	if err != nil {
-		w.readError(w.dirEntry(path, depth), err)
+		n := w.dirNodeAt(path, depth)
+		w.readError(n.entry, n.nitems.Load() > 0, err)
 		return nil
 	}
 	if depth == 0 {
@@ -39,6 +40,9 @@ func (w *walker) callback(path string, d fs.DirEntry, err error) error {
 	}
 	e := &Entry{path: gpath, sysPath: path, name: de.Name(), accPath: acc, depth: w.baseDepth + depth, startLen: w.root.startLen}
 	parent := w.dirs.get(w.rp.parentKey(path, depth))
+	if parent != nil {
+		parent.nitems.Add(1)
+	}
 	typ := de.Type()
 	switch {
 	case typ.IsDir():
@@ -53,12 +57,12 @@ func (w *walker) callback(path string, d fs.DirEntry, err error) error {
 	return nil
 }
 
-// dirEntry returns the Entry of a directory fastwalk has read or tried to.
-func (w *walker) dirEntry(path string, depth int) *Entry {
+// dirNodeAt returns the node of a directory fastwalk has read or tried to.
+func (w *walker) dirNodeAt(path string, depth int) *dirNode {
 	if depth == 0 {
-		return w.root
+		return w.dirs.get(w.rp.fw)
 	}
-	return w.dirs.get(path).entry
+	return w.dirs.get(path)
 }
 
 // consider is consider_visiting, under the evaluation lock when
@@ -170,10 +174,13 @@ func (w *walker) considerMounted(e *Entry) error {
 // readError maps fastwalk's report that it could not read a directory to
 // the fts state GNU would see:
 //   - open(2) failed: FTS_DNR;
-//   - getdents(2) failed: FTS_ERR (fts reports it in place of FTS_DP);
+//   - getdents(2) failed: FTS_ERR (fts reports it in place of FTS_DP),
+//     but FTS_DNR while no entry has been read yet (fts_build's nitems):
+//     a directory removed while open fails its first getdents with
+//     ENOENT on some file systems, which -ignore_readdir_race ignores;
 //   - lstat of a DT_UNKNOWN child failed: FTS_NS for that child. fastwalk
 //     abandons the rest of the directory here, an accepted divergence.
-func (w *walker) readError(dir *Entry, err error) {
+func (w *walker) readError(dir *Entry, readSome bool, err error) {
 	var pe *fs.PathError
 	var se *os.SyscallError
 	errno, ok := libc.Errno(err)
@@ -194,7 +201,7 @@ func (w *walker) readError(dir *Entry, err error) {
 			child.accPath = child.path
 		}
 		w.consider(child, ftsNS, errno)
-	case errors.As(err, &se):
+	case errors.As(err, &se) && readSome:
 		w.consider(dir, ftsERR, errno)
 	default:
 		w.consider(dir, ftsDNR, errno)

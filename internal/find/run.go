@@ -44,6 +44,8 @@ type Run struct {
 	stdin        *bufio.Reader // find's stdin, read by the -ok question
 	inheritedFDs map[int]bool  // non-close-on-exec descriptors at startup
 	heldFDs      []int         // -samefile reference files, held open for the run (parse_samefile)
+
+	lsw *lsWidths // listfile.c's static column widths (-ls, -fls; set by insertFls)
 }
 
 func newRun(args []string) *Run {
