@@ -25,6 +25,7 @@ func predPrune(r *Run, e *Entry, p *Predicate) bool {
 // can print after this point.
 func predQuit(r *Run, e *Entry, p *Predicate) bool {
 	r.commit(e)
+	r.endHold(e) // cleanup locks every sink
 	r.cleanup()
 	r.exit(int(r.exitStatus.Load()))
 	return true

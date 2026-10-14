@@ -8,6 +8,7 @@ import "golang.org/x/sys/unix"
 // runs at a time.
 func predExec(r *Run, e *Entry, p *Predicate) bool {
 	ev := p.args.exec
+	r.endHold(e) // ev.mu and execMu precede the sinks in the lock order
 	if ev.id == fnOk || ev.id == fnOkdir {
 		if !r.askOk(e, ev) {
 			return false

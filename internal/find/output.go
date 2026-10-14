@@ -25,7 +25,7 @@ const (
 type sink interface {
 	lock()
 	unlock()
-	write(b []byte) error
+	write(s, suffix string) error // one stdio call writing s then suffix
 	flush() error
 }
 
@@ -60,11 +60,11 @@ func (o *Output) unlock() { o.mu.Unlock() }
 // write drops data once closeAll has run: a worker still committing after
 // the exit claim must neither write to a closed (or reused) fd 1 nor report
 // an error GNU, which dies at once, could never print.
-func (o *Output) write(b []byte) error {
+func (o *Output) write(s, suffix string) error {
 	if o.closed {
 		return nil
 	}
-	return o.f.write(b)
+	return o.f.writePair(s, suffix)
 }
 
 func (o *Output) flush() error { return o.f.flushBuf() }
@@ -92,6 +92,7 @@ type piece struct {
 type pending struct {
 	s      *Stream
 	text   string
+	suffix string // written right after text: print_quoted's "%s\n" without a concatenation
 	fail   failMode
 	render func() []piece
 	done   bool
@@ -99,7 +100,19 @@ type pending struct {
 
 // txn is one entry's pending output. Committing it atomically keeps an
 // entry's records together, as GNU's one-entry-at-a-time evaluation does.
-type txn struct{ items []pending }
+// The first call is stored inline: most entries make one (-print).
+type txn struct {
+	items []pending
+	first [1]pending
+}
+
+// add queues one call.
+func (t *txn) add(p pending) {
+	if t.items == nil {
+		t.items = t.first[:0]
+	}
+	t.items = append(t.items, p)
+}
 
 // emit queues one unchecked call (print_quoted, fputs) for s on e.
 func (r *Run) emit(e *Entry, s *Stream, text string) { r.emitChecked(e, s, text, failIgnored) }
@@ -114,7 +127,7 @@ func (r *Run) emitChecked(e *Entry, s *Stream, text string, fail failMode) {
 		}
 		return
 	}
-	e.txn.items = append(e.txn.items, pending{s: s, text: text, fail: fail})
+	e.txn.add(pending{s: s, text: text, fail: fail})
 }
 
 // emitRendered queues a record whose calls are produced at commit time.
@@ -123,15 +136,15 @@ func (r *Run) emitChecked(e *Entry, s *Stream, text string, fail failMode) {
 // first call, so a failure reports the first piece's stage.
 func (r *Run) emitRendered(e *Entry, s *Stream, render func() []piece) {
 	if s.sink == nil {
-		r.writeRenderedStderr(render())
+		r.writeRenderedStderr(e, render())
 		return
 	}
-	e.txn.items = append(e.txn.items, pending{s: s, fail: failFatal, render: render})
+	e.txn.add(pending{s: s, fail: failFatal, render: render})
 }
 
 // writeRenderedStderr writes a rendered record to stderr in one write,
-// dying with the record's first stage if it fails.
-func (r *Run) writeRenderedStderr(ps []piece) {
+// dying with the record's first stage if it fails (releasing e's sinks).
+func (r *Run) writeRenderedStderr(e *Entry, ps []piece) {
 	if len(ps) == 0 {
 		return
 	}
@@ -140,7 +153,7 @@ func (r *Run) writeRenderedStderr(ps []piece) {
 		b.WriteString(pc.text)
 	}
 	if err := r.writeStderr(b.String()); err != nil {
-		r.fatalf(err, "Failed to write output (at stage %d)", ps[0].stage)
+		r.fatalAt(e, err, "Failed to write output (at stage %d)", ps[0].stage)
 	}
 }
 
@@ -149,7 +162,11 @@ func (r *Run) emitQuoted(e *Entry, s *Stream, name, suffix string) {
 	if s.tty {
 		name = r.loc.Qmark(name)
 	}
-	r.emit(e, s, name+suffix)
+	if s.sink == nil {
+		r.emit(e, s, name+suffix) // stderr: one write(2) per record
+		return
+	}
+	e.txn.add(pending{s: s, text: name, suffix: suffix, fail: failIgnored})
 }
 
 // commit hands e's queued calls to their streams. Each sink receives all
@@ -176,7 +193,7 @@ func (r *Run) commit(e *Entry) {
 			it.done = true
 			if it.render != nil {
 				for _, pc := range it.render() {
-					if err := sk.write([]byte(pc.text)); err != nil {
+					if err := sk.write(pc.text, ""); err != nil {
 						if !held {
 							sk.unlock() // exit() flushes every stream: never die holding one
 						}
@@ -186,7 +203,7 @@ func (r *Run) commit(e *Entry) {
 				}
 				continue
 			}
-			if err := sk.write([]byte(it.text)); err != nil && it.fail == failReported {
+			if err := sk.write(it.text, it.suffix); err != nil && it.fail == failReported {
 				r.reportWriteError(e, sk, it.s, err)
 			}
 		}
@@ -248,10 +265,11 @@ func (r *Run) fatalAt(e *Entry, err error, format string, a ...any) {
 // evaluating e. glibc error() flushes stdout before printing, and GNU's
 // stdout buffer already holds e's earlier output, so commit e's
 // transaction first: in a merged stream the message follows that output.
-// Inside an open record the commit keeps the record's sinks locked
-// (errorInRecord), so no other entry's output lands in the record.
+// Inside an open record or a visit the commit keeps e's sinks locked
+// (errorInRecord), so no other entry's output lands in the record or
+// between e's output and its diagnostics.
 func (r *Run) errorAt(e *Entry, err error, format string, a ...any) {
-	if e != nil && e.record.open {
+	if e != nil && (e.record.open || e.record.visiting) {
 		r.errorInRecord(e, err, format, a...)
 		return
 	}
@@ -290,7 +308,7 @@ func (o *Output) flushFilesQuietly() {
 // WriteString writes usage, version and -D help text (no entry).
 func (o *Output) WriteString(s string) {
 	o.mu.Lock()
-	o.write([]byte(s))
+	o.write(s, "")
 	o.mu.Unlock()
 }
 

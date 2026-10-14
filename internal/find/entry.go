@@ -3,6 +3,7 @@ package find
 import (
 	"io/fs"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"golang.org/x/sys/unix"
@@ -67,6 +68,25 @@ type Entry struct {
 	cancelled     atomic.Bool // fts will never return this directory's FTS_DP (FTS_ERR, vanished under -ignore_readdir_race)
 	txn           txn
 	record        recordState // an open -printf/-fprintf record (record.go)
+}
+
+// entryPool recycles the Entry of a plain non-directory: the walk makes one
+// per file, and allocating and scanning them was a fifth of a -print
+// walk's CPU time.
+var entryPool = sync.Pool{New: func() any { return new(Entry) }}
+
+func newEntry() *Entry { return entryPool.Get().(*Entry) }
+
+// freeEntry returns e to the pool, keeping its txn's backing array. The
+// caller guarantees nothing refers to e any more.
+func freeEntry(e *Entry) {
+	items := e.txn.items[:0]
+	clear(e.txn.items[:cap(e.txn.items)]) // drop -ls closures and streams
+	*e = Entry{}
+	if cap(items) > len(e.txn.first) {
+		e.txn.items = items
+	}
+	entryPool.Put(e)
 }
 
 // setType records a d_type-derived type without a stat (FTS_NSOK).

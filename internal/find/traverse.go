@@ -37,6 +37,7 @@ func (r *Run) findRoot(arg string) bool {
 			w.walkDeep()
 		}
 	}
+	r.drainBatch() // contents before -depth's directory visits and the next start point
 	w.runDeferred()
 	r.afterRoot()
 	return true
@@ -82,8 +83,15 @@ func (r *Run) afterRoot() { r.completePendingExecdirs(r.tree) }
 
 // visit is ftsfind.c visit.
 func (r *Run) visit(e *Entry) {
+	e.record.visiting = true
 	r.apply(e, r.tree)
-	r.commit(e)
+	if r.batchable(e) {
+		r.batchAdd(e)
+	} else {
+		r.commit(e)
+	}
+	r.endHold(e)
+	e.record.visiting = false
 }
 
 // cleanup is util.c cleanup: pending command lines first, then the

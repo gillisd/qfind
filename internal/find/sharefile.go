@@ -19,10 +19,10 @@ type sharedFile struct {
 	closed bool // fclose'd by closeSharedFiles: exit() no longer flushes it
 }
 
-func (sf *sharedFile) lock()                { sf.mu.Lock() }
-func (sf *sharedFile) unlock()              { sf.mu.Unlock() }
-func (sf *sharedFile) write(b []byte) error { return sf.c.write(b) }
-func (sf *sharedFile) flush() error         { return sf.c.flushBuf() }
+func (sf *sharedFile) lock()                        { sf.mu.Lock() }
+func (sf *sharedFile) unlock()                      { sf.mu.Unlock() }
+func (sf *sharedFile) write(s, suffix string) error { return sf.c.writePair(s, suffix) }
+func (sf *sharedFile) flush() error                 { return sf.c.flushBuf() }
 
 type devIno struct{ dev, ino uint64 }
 
@@ -34,6 +34,17 @@ type shareRegistry struct {
 	mu    sync.Mutex
 	files map[devIno]*sharedFile
 	order hashOrder
+}
+
+// all returns every shared file, in no particular order.
+func (reg *shareRegistry) all() []*sharedFile {
+	reg.mu.Lock()
+	defer reg.mu.Unlock()
+	files := make([]*sharedFile, 0, len(reg.files))
+	for _, sf := range reg.files {
+		files = append(files, sf)
+	}
+	return files
 }
 
 // openOutputFile is parser.c open_output_file. The exact strings

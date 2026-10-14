@@ -2,18 +2,22 @@ package find
 
 import "slices"
 
-// recordState is one -printf/-fprintf evaluation in progress on an entry.
-// GNU writes a format's segments one stdio call at a time, and glibc's
-// error() flushes stdout between two of them, so a diagnostic raised
-// mid-record (%l, %Y, %Z, an EOVERFLOW) must send the record's earlier
-// bytes to their sinks first. Committing would release the sinks and let
-// another entry's output land inside the record, which single-threaded
-// GNU never does; so the record keeps every sink it has written to locked
-// until its last segment is committed.
+// recordState is one -printf/-fprintf evaluation in progress on an entry,
+// and the sinks a diagnostic made the entry hold. GNU writes a format's
+// segments one stdio call at a time, and glibc's error() flushes stdout
+// between two of them, so a diagnostic raised mid-record (%l, %Y, %Z, an
+// EOVERFLOW) must send the record's earlier bytes to their sinks first.
+// Committing would release the sinks and let another entry's output land
+// inside the record, which single-threaded GNU never does; so the entry
+// keeps every sink locked from its first diagnostic until its visit ends
+// (visit, endHold): a later diagnostic of the same entry, in another
+// record or action, then follows the entry's own output in a merged
+// stream, as it does in GNU.
 type recordState struct {
-	open bool
-	out  sink   // the format's stream (nil for stderr)
-	held []sink // locked by errorInRecord, in lock order
+	open     bool
+	out      sink   // the format's stream (nil for stderr)
+	held     []sink // locked by errorInRecord, in lock order
+	visiting bool   // inside visit: a diagnostic's hold lasts until endHold
 }
 
 // holds reports whether e's open record holds sk's lock.
@@ -27,10 +31,22 @@ func (r *Run) openRecord(e *Entry, out *Stream) {
 }
 
 // closeRecord ends the record: if a diagnostic made it hold its sinks,
-// the rest of the record goes out before they are released. Only this
-// one evaluation runs while they are held, so the window is bounded.
+// the rest of the record goes out under them. Inside a visit they stay
+// held until endHold; the window is the rest of one entry's evaluation.
 func (r *Run) closeRecord(e *Entry) {
 	e.record.open, e.record.out = false, nil
+	if len(e.record.held) > 0 {
+		r.commit(e)
+		if !e.record.visiting {
+			r.releaseRecord(e)
+		}
+	}
+}
+
+// endHold commits e's output and releases every sink it holds: at the
+// end of its visit, and before anything that takes a lock ordered before
+// the sinks (-exec's execVal.mu and execMu) or exits (-quit's cleanup).
+func (r *Run) endHold(e *Entry) {
 	if len(e.record.held) > 0 {
 		r.commit(e)
 		r.releaseRecord(e)
@@ -70,7 +86,9 @@ func (r *Run) errorInRecord(e *Entry, err error, format string, a ...any) {
 // holdRecordSinks locks, in the global order (shared files by opening
 // order, then stdout), every sink e's record needs and does not hold yet.
 // Sinks are only ever added while none of the new ones precedes a held
-// one: the first call takes them all, later calls need nothing new.
+// one: the first call takes them all, later calls need nothing new. A
+// hold that outlives its record (visiting) may meet any of the
+// expression's streams later, so it takes every shared file and stdout.
 func (r *Run) holdRecordSinks(e *Entry) {
 	var need []sink
 	add := func(sk sink) {
@@ -84,6 +102,12 @@ func (r *Run) holdRecordSinks(e *Entry) {
 		}
 	}
 	add(e.record.out)
+	if e.record.visiting && len(e.record.held) == 0 {
+		for _, sf := range r.shared.all() {
+			add(sf)
+		}
+		add(r.out)
+	}
 	slices.SortFunc(need, func(a, b sink) int { return sinkRank(a) - sinkRank(b) })
 	for _, sk := range need {
 		sk.lock()

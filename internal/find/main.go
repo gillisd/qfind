@@ -24,6 +24,9 @@ func Main(args []string) int {
 	r.workers = r.numWorkers()
 	r.prevDepth.Store(math.MinInt32)
 	r.serial = r.needsSerial()
+	if !r.serial && !r.out.f.lineBuf {
+		r.batch = newStdoutBatch(r.workers)
+	}
 	if r.processAllStartPoints() {
 		r.showSuccessRates(r.tree)
 		r.cleanup()

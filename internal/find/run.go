@@ -37,6 +37,7 @@ type Run struct {
 	workers       int          // fastwalk's NumWorkers
 	prevDepth     atomic.Int64 // ftsfind.c prev_depth, for -D search
 	formatFlushes bool         // a format contains \c (Task 7)
+	batch         *stdoutBatch // parallel mode's batched -print records (batch.go); nil when serial
 	slot0         quoteSlot0
 
 	// Command execution (Task 8).
@@ -45,7 +46,8 @@ type Run struct {
 	inheritedFDs map[int]bool  // non-close-on-exec descriptors at startup
 	heldFDs      []int         // -samefile reference files, held open for the run (parse_samefile)
 
-	lsw *lsWidths // listfile.c's static column widths (-ls, -fls; set by insertFls)
+	lsw        *lsWidths                  // listfile.c's static column widths (-ls, -fls; set by insertFls)
+	lsDateLast atomic.Pointer[lsDateMemo] // lsDate's last answer
 }
 
 func newRun(args []string) *Run {

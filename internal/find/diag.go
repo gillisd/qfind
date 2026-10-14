@@ -99,8 +99,21 @@ func (r *Run) claimExit() {
 	}
 }
 
+// BeforeExit, when set, runs just before the process exits; cmd/qfind uses
+// it to stop a QFIND_CPUPROFILE profile, which os.Exit would truncate.
+var BeforeExit func()
+
+// osExit is os.Exit after the BeforeExit hook.
+func osExit(status int) {
+	if BeforeExit != nil {
+		BeforeExit()
+	}
+	os.Exit(status)
+}
+
 // exitClaimed is exit's work once the caller holds the claim.
 func (r *Run) exitClaimed(status int) {
+	r.drainBatch() // batched records were already written, in GNU's terms
 	// close_stdout runs first, from atexit; a stdout failure _exit(1)s,
 	// which skips stdio's flush of the other FILEs (gl/lib/closeout.c).
 	if r.out != nil {
@@ -110,16 +123,16 @@ func (r *Run) exitClaimed(status int) {
 			} else {
 				r.errorf(err, "write error")
 			}
-			os.Exit(1)
+			osExit(1)
 		}
 	}
 	// close_stdout also runs close_stream(stderr): after any failed write to
 	// stderr (2>/dev/full), it calls _exit(EXIT_FAILURE) without a message.
 	if r.stderrFailed.Load() {
-		os.Exit(1)
+		osExit(1)
 	}
 	if r.out != nil {
 		r.out.flushFilesQuietly() // exit()'s _IO_cleanup flushes every other FILE
 	}
-	os.Exit(status)
+	osExit(status)
 }

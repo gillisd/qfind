@@ -38,7 +38,9 @@ func (w *walker) callback(path string, d fs.DirEntry, err error) error {
 	if r.opt.Symlinks == SymlinkAlwaysDeref {
 		acc = gpath // FTS_LOGICAL implies FTS_NOCHDIR: fts_accpath is fts_path
 	}
-	e := &Entry{path: gpath, sysPath: path, name: de.Name(), accPath: acc, depth: w.baseDepth + depth, startLen: w.root.startLen}
+	e := newEntry()
+	e.path, e.sysPath, e.name, e.accPath = gpath, path, de.Name(), acc
+	e.depth, e.startLen = w.baseDepth+depth, w.root.startLen
 	parent := w.dirs.get(w.rp.parentKey(path, depth))
 	if parent != nil {
 		parent.nitems.Add(1)
@@ -54,6 +56,7 @@ func (w *walker) callback(path string, d fs.DirEntry, err error) error {
 	}
 	e.setType(typ)
 	w.consider(e, ftsNSOK, nil)
+	freeEntry(e) // a non-directory is never deferred or kept once considered
 	return nil
 }
 

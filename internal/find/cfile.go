@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"strings"
 
 	"golang.org/x/sys/unix"
 )
@@ -38,12 +39,12 @@ func newCfile(f *os.File) *cfile {
 // write is _IO_new_file_xsputn, the output path of fwrite, fputs and
 // fprintf. It returns an error when this call's write(2) failed: exactly
 // when the C call returns EOF or a short count.
-func (c *cfile) write(p []byte) error {
+func (c *cfile) write(p string) error {
 	toDo := len(p)
 	space := c.size - len(c.buf)
 	count, mustFlush := space, false
 	if c.lineBuf && space >= toDo {
-		if i := bytes.LastIndexByte(p, '\n'); i >= 0 {
+		if i := strings.LastIndexByte(p, '\n'); i >= 0 {
 			count, mustFlush = i+1, true
 		}
 	}
@@ -61,7 +62,7 @@ func (c *cfile) write(p []byte) error {
 		doWrite -= toDo % c.size // write whole blocks directly
 	}
 	if doWrite > 0 {
-		if err := c.sysWrite(p[:doWrite]); err != nil {
+		if err := c.sysWrite([]byte(p[:doWrite])); err != nil {
 			return err
 		}
 		p = p[doWrite:]
@@ -81,6 +82,19 @@ func (c *cfile) write(p []byte) error {
 		}
 	}
 	return nil
+}
+
+// writePair is write(s + suffix), one C call, without concatenating
+// when the two fit in the buffer's free space and nothing is flushed.
+func (c *cfile) writePair(s, suffix string) error {
+	if suffix == "" {
+		return c.write(s)
+	}
+	if !c.lineBuf && len(s)+len(suffix) <= c.size-len(c.buf) {
+		c.buf = append(append(c.buf, s...), suffix...)
+		return nil
+	}
+	return c.write(s + suffix)
 }
 
 // flushBuf is _IO_do_write of the buffer (fflush, _IO_OVERFLOW): the

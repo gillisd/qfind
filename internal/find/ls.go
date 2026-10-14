@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -16,16 +17,24 @@ import (
 	"qfind/internal/libc"
 )
 
-// lsWidths are listfile.c's static column widths: they only ever grow.
-// mu is taken inside a stream's lock (commit renders -ls lines there).
+// lsWidths are listfile.c's static column widths: they only ever grow,
+// in output order. cur is replaced, never modified, under mu, which is
+// taken inside a stream's lock (commit renders -ls lines there); it is
+// also read without mu, to render a line ahead of its commit.
 type lsWidths struct {
-	mu                                       sync.Mutex
+	mu  sync.Mutex
+	cur atomic.Pointer[lsWidthVals]
+}
+
+type lsWidthVals struct {
 	inode, blocks, nlink, owner, group, size int
 	major, minor                             int
 }
 
 func newLsWidths() *lsWidths {
-	return &lsWidths{inode: 9, blocks: 6, nlink: 3, owner: 8, group: 8, size: 8, major: 3, minor: 3}
+	w := &lsWidths{}
+	w.cur.Store(&lsWidthVals{inode: 9, blocks: 6, nlink: 3, owner: 8, group: 8, size: 8, major: 3, minor: 3})
+	return w
 }
 
 func grow(w *int, n int) {
@@ -35,79 +44,61 @@ func grow(w *int, n int) {
 }
 
 // listFile is lib/listfile.c list_file for one entry. Everything that
-// reads the file system happens now; the line itself is rendered when the
-// entry's output is committed, because its column widths are listfile.c's
-// statics, shared by all entries and grown in output order. The pieces are
-// list_file's stdio calls with their failed_at stages, so a failed write
-// dies with "Failed to write output (at stage N)" exactly as GNU does.
+// reads the file system happens now; the line itself is committed in
+// output order, because its column widths are listfile.c's statics, shared
+// by all entries and grown in output order. The pieces are list_file's
+// stdio calls with their failed_at stages, so a failed write dies with
+// "Failed to write output (at stage N)" exactly as GNU does.
 func (r *Run) listFile(e *Entry, out *Stream) {
-	st := e.st // copied: the closures run at commit time
+	st := &e.st
 	obs := uint64(r.opt.OutputBlockSize)
-	blocks := (uint64(st.Blocks)*512 + obs - 1) / obs
-	user, haveUser := idcache.UserName(st.Uid)
-	group, haveGroup := idcache.GroupName(st.Gid)
-	date, dateStage := r.lsDate(st.Mtim.Sec)
-	name := lsQuote(e.path)
-	isLink := st.Mode&unix.S_IFMT == unix.S_IFLNK
-	link, linkErr := "", error(nil)
-	if isLink {
+	l := &lsRecord{lw: r.lsw, mode: filemode.String(st.Mode), name: lsQuote(e.path)}
+	l.date, l.dateStage = r.lsDate(st.Mtim.Sec)
+	l.ino = strconv.FormatUint(st.Ino, 10)
+	l.blocks = strconv.FormatUint((uint64(st.Blocks)*512+obs-1)/obs, 10)
+	l.nlink = strconv.FormatUint(uint64(st.Nlink), 10)
+	l.user, l.haveUser = idcache.UserName(st.Uid)
+	if l.haveUser {
+		l.userW = r.mbswidth(l.user)
+	} else {
+		l.user = strconv.FormatUint(uint64(st.Uid), 10)
+	}
+	l.group, l.haveGroup = idcache.GroupName(st.Gid)
+	if l.haveGroup {
+		l.groupW = r.mbswidth(l.group)
+	} else {
+		l.group = strconv.FormatUint(uint64(st.Gid), 10)
+	}
+	switch st.Mode & unix.S_IFMT {
+	case unix.S_IFCHR, unix.S_IFBLK:
+		l.isDev = true
+		l.major = strconv.FormatUint(uint64(unix.Major(st.Rdev)), 10)
+		l.minor = strconv.FormatUint(uint64(unix.Minor(st.Rdev)), 10)
+	default:
+		l.size = strconv.FormatInt(st.Size, 10)
+	}
+	var linkErr error
+	if st.Mode&unix.S_IFMT == unix.S_IFLNK {
 		var target string
 		if target, linkErr = readlink(e.sysPath); linkErr == nil {
-			link = lsQuote(target)
+			l.isLink, l.link = true, lsQuote(target)
 		}
 	}
-	w := r.lsw
-	head := func() []piece {
-		w.mu.Lock()
-		defer w.mu.Unlock()
-		ps := make([]piece, 0, 18)
-		add := func(text string, stage int) { ps = append(ps, piece{text, stage}) }
-		add(w.right(&w.inode, strconv.FormatUint(st.Ino, 10)), 100)
-		add(" ", 150)
-		add(w.right(&w.blocks, strconv.FormatUint(blocks, 10)), 200)
-		add(" ", 250)
-		add(filemode.String(st.Mode)+" ", 275) // strmode's trailing space
-		add(w.right(&w.nlink, strconv.FormatUint(uint64(st.Nlink), 10)), 300)
-		add(" ", 250)
-		if haveUser {
-			grow(&w.owner, r.mbswidth(user))
-			add(fmt.Sprintf("%-*s ", w.owner, user), 400)
-		} else {
-			t := fmt.Sprintf("%-8d ", st.Uid)
-			grow(&w.owner, len(t)) // the trailing space counts, as in listfile.c
-			add(t, 450)
-		}
-		if haveGroup {
-			grow(&w.group, r.mbswidth(group))
-			add(fmt.Sprintf("%-*s ", w.group, group), 500)
-		} else {
-			t := fmt.Sprintf("%-*d", w.group, st.Gid)
-			grow(&w.group, len(t))
-			add(t, 550)
-			add(" ", 525)
-		}
-		switch st.Mode & unix.S_IFMT {
-		case unix.S_IFCHR, unix.S_IFBLK:
-			add(w.right(&w.major, strconv.FormatUint(uint64(unix.Major(st.Rdev)), 10)), 600)
-			add(", ", 625)
-			add(w.right(&w.minor, strconv.FormatUint(uint64(unix.Minor(st.Rdev)), 10)), 650)
-		default:
-			add(w.right(&w.size, strconv.FormatInt(st.Size, 10)), 800)
-		}
-		add(" ", 850)
-		add(date+" ", dateStage)
-		add(name, 1200)
-		if isLink && linkErr == nil {
-			add(" -> ", 1300)
-			add(link, 1350)
-		}
-		return ps
+	l.newline = linkErr == nil
+	// The line is rendered now, outside the stream's lock, with the
+	// current widths; at commit it is used as is if no line has changed
+	// them since and it changes none (lsRecord.head).
+	l.snap = l.lw.cur.Load()
+	v := *l.snap
+	l.pre = l.render(&v)
+	if v != *l.snap {
+		l.pre = nil
 	}
-	tail := func() []piece { return []piece{{"\n", 1400}} }
 	if linkErr == nil {
-		r.emitRendered(e, out, func() []piece { return append(head(), tail()...) })
+		r.emitRendered(e, out, l.head)
 		return
 	}
+	head := l.head
 	// list_file's error(0, errno, "%s", name) comes between the name and
 	// the newline, and flushes stdout first: the record holds its sinks
 	// across the diagnostic (record.go). The exit status is unchanged.
@@ -118,8 +109,91 @@ func (r *Run) listFile(e *Entry, out *Stream) {
 	r.openRecord(e, out)
 	r.emitRendered(e, out, head)
 	r.errorAt(e, linkErr, "%s", e.path)
-	r.emitRendered(e, out, tail)
+	r.emitRendered(e, out, lsNewline)
 	r.closeRecord(e)
+}
+
+func lsNewline() []piece { return []piece{{"\n", 1400}} }
+
+// lsRecord is one -ls line's text, formatted ahead of its commit; only the
+// padding to the shared column widths waits for it.
+type lsRecord struct {
+	lw                                          *lsWidths
+	snap                                        *lsWidthVals // the widths pre was rendered with
+	pre                                         []piece      // nil when rendering changed the widths
+	ino, blocks, mode, nlink, user, group       string
+	size, major, minor, date, name, link        string
+	userW, groupW, dateStage                    int
+	haveUser, haveGroup, isDev, isLink, newline bool
+}
+
+// head is the line's calls at commit time, in output order: the line
+// rendered ahead when the widths are still those it was rendered with,
+// else the line rendered now, growing the widths.
+func (l *lsRecord) head() []piece {
+	l.lw.mu.Lock()
+	defer l.lw.mu.Unlock()
+	cur := l.lw.cur.Load()
+	if l.pre != nil && cur == l.snap {
+		return l.pre
+	}
+	v := *cur
+	ps := l.render(&v)
+	if v != *cur {
+		l.lw.cur.Store(&v)
+	}
+	return ps
+}
+
+// render formats the line with widths w, growing them as listfile.c does.
+func (l *lsRecord) render(w *lsWidthVals) []piece {
+	var arr [256]byte
+	b := lsLine{buf: arr[:0]}
+	b.right(&w.inode, l.ino, 100)
+	b.add(" ", 150)
+	b.right(&w.blocks, l.blocks, 200)
+	b.add(" ", 250)
+	b.add(l.mode, 275)
+	b.add(" ", 275) // strmode's trailing space
+	b.right(&w.nlink, l.nlink, 300)
+	b.add(" ", 250)
+	if l.haveUser {
+		grow(&w.owner, l.userW)
+		b.left(w.owner-len(l.user), l.user, 400) // "%-*s ": printf pads bytes
+		b.add(" ", 400)
+	} else {
+		b.left(8-len(l.user), l.user, 450) // "%-8d "
+		b.add(" ", 450)
+		grow(&w.owner, max(8, len(l.user))+1) // the trailing space counts, as in listfile.c
+	}
+	if l.haveGroup {
+		grow(&w.group, l.groupW)
+		b.left(w.group-len(l.group), l.group, 500)
+		b.add(" ", 500)
+	} else {
+		b.left(w.group-len(l.group), l.group, 550) // "%-*d"
+		grow(&w.group, max(w.group, len(l.group)))
+		b.add(" ", 525)
+	}
+	if l.isDev {
+		b.right(&w.major, l.major, 600)
+		b.add(", ", 625)
+		b.right(&w.minor, l.minor, 650)
+	} else {
+		b.right(&w.size, l.size, 800)
+	}
+	b.add(" ", 850)
+	b.add(l.date, l.dateStage)
+	b.add(" ", l.dateStage)
+	b.add(l.name, 1200)
+	if l.isLink {
+		b.add(" -> ", 1300)
+		b.add(l.link, 1350)
+	}
+	if l.newline {
+		b.add("\n", 1400)
+	}
+	return b.pieces()
 }
 
 // lsStderrLinkError is list_file on unbuffered stderr (-fls /dev/stderr)
@@ -130,7 +204,10 @@ func (r *Run) listFile(e *Entry, out *Stream) {
 func (r *Run) lsStderrLinkError(e *Entry, head func() []piece, linkErr error) {
 	r.commit(e) // e's earlier output precedes the diagnostic, as in errorAt
 	o := r.out
-	o.lock()
+	held := e.holds(o)
+	if !held {
+		o.lock()
+	}
 	ps := head()
 	msg := r.errorText(linkErr, "%s", e.path)
 	var b strings.Builder
@@ -149,17 +226,69 @@ func (r *Run) lsStderrLinkError(e *Entry, head func() []piece, linkErr error) {
 		r.stderrFailed.Store(true)
 	}
 	r.stderrMu.Unlock()
-	o.unlock()
+	if !held {
+		o.unlock()
+	}
 	if err != nil {
-		r.fatalf(err, "Failed to write output (at stage %d)", stage)
+		r.fatalAt(e, err, "Failed to write output (at stage %d)", stage)
+	}
+}
+
+// lsLine builds one -ls line in a single buffer, remembering where each
+// stdio call (and so each failed_at stage) begins. Consecutive text of
+// the same stage forms one piece.
+type lsLine struct {
+	buf    []byte
+	n      int
+	starts [24]int
+	stages [24]int
+}
+
+func (l *lsLine) mark(stage int) {
+	if l.n == 0 || l.stages[l.n-1] != stage {
+		l.starts[l.n], l.stages[l.n] = len(l.buf), stage
+		l.n++
+	}
+}
+
+func (l *lsLine) add(s string, stage int) {
+	l.mark(stage)
+	l.buf = append(l.buf, s...)
+}
+
+func (l *lsLine) pad(n int) {
+	for ; n > 0; n-- {
+		l.buf = append(l.buf, ' ')
 	}
 }
 
 // right is fprintf("%*s", *width, s), widening the column when s is wider.
-func (w *lsWidths) right(width *int, s string) string {
-	t := fmt.Sprintf("%*s", *width, s)
-	grow(width, len(t))
-	return t
+func (l *lsLine) right(width *int, s string, stage int) {
+	l.mark(stage)
+	l.pad(*width - len(s))
+	l.buf = append(l.buf, s...)
+	grow(width, len(s))
+}
+
+// left is "%-*s": s, then padding to n further columns.
+func (l *lsLine) left(n int, s string, stage int) {
+	l.mark(stage)
+	l.buf = append(l.buf, s...)
+	l.pad(n)
+}
+
+// pieces splits the line into its calls; they share one string.
+func (l *lsLine) pieces() []piece {
+	s := string(l.buf)
+	ps := make([]piece, l.n)
+	for i := range ps {
+		end := len(s)
+		if i+1 < l.n {
+			end = l.starts[i+1]
+		}
+		ps[i] = piece{s[l.starts[i]:end], l.stages[i]}
+	}
+	return ps
 }
 
 // lsLocaltimeLimit bounds the times handed to Go's calendar: far beyond
@@ -171,6 +300,23 @@ const lsLocaltimeLimit = 1 << 60
 // months) before and one hour after find's start, "%b %e  %Y" otherwise;
 // when localtime would fail (the year does not fit an int), the seconds.
 func (r *Run) lsDate(mt int64) (string, int) {
+	// Files of one tree often share a modification second; the last
+	// answer is kept (lsDateLast) to skip localtime and strftime.
+	if c := r.lsDateLast.Load(); c != nil && c.mt == mt {
+		return c.text, c.stage
+	}
+	text, stage := r.lsDateUncached(mt)
+	r.lsDateLast.Store(&lsDateMemo{mt, text, stage})
+	return text, stage
+}
+
+type lsDateMemo struct {
+	mt    int64
+	text  string
+	stage int
+}
+
+func (r *Run) lsDateUncached(mt int64) (string, int) {
 	ok := mt > -lsLocaltimeLimit && mt < lsLocaltimeLimit
 	var t time.Time
 	if ok {
@@ -206,6 +352,13 @@ func (r *Run) mbswidth(s string) int {
 // lsQuote is listfile.c print_name_with_quoting (literal_control_chars is
 // always false in find): byte-wise, locale-independent.
 func lsQuote(s string) string {
+	i := 0
+	for i < len(s) && s[i] > 040 && s[i] < 0177 && s[i] != '\\' && s[i] != '"' {
+		i++
+	}
+	if i == len(s) {
+		return s // nothing to quote
+	}
 	var b strings.Builder
 	for i := 0; i < len(s); i++ {
 		switch c := s[i]; c {
