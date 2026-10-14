@@ -1,5 +1,6 @@
 # qfind
 
+IMPORTANT: DO NOT WRITE TO /tmp. EVER!
 ## Task
 
 Reimplement all of GNU find (findutils 4.11.0) in Go as a new tool, **qfind**, specifically on top of the fastwalk Go library (`github.com/charlievieth/fastwalk`, source in `references/fastwalk`).
