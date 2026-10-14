@@ -17,7 +17,7 @@ The implementation plan is `_claude/plans/master_plan.md`.
 
 Run `rake` to build everything, then run rubocop and the suite. As a non-root user it exits non-zero, because the 15 `rlimit_nproc: 0` examples, which no Go binary can start under, fail by design.
 
-- `dist/find` is qfind: `rake qfind:build` (`go build -trimpath -o dist/find ./cmd/qfind`).
+- `dist/find` is qfind: `rake qfind:build` (`go build -trimpath -ldflags=-X=runtime.godebugDefault=asyncpreemptoff=1 -o dist/find ./cmd/qfind`; without the flag, async preemption's signals cut directory reads short on virtiofs).
 - GNU find 4.11.0 is built from source as the reference oracle at `findutils-4.11.0/find/find` (`rake upstream:build`). Run the suite against it with `FIND=$PWD/findutils-4.11.0/find/find bundle exec rspec`.
 - Reference sources are cloned into `references/`: `rspec`, `go` (Go master), `fastwalk`.
 
