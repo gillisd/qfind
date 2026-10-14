@@ -109,7 +109,7 @@ func (r *Run) emit(e *Entry, s *Stream, text string) { r.emitChecked(e, s, text,
 func (r *Run) emitChecked(e *Entry, s *Stream, text string, fail failMode) {
 	if s.sink == nil {
 		if err := r.writeStderr(text); err != nil && fail == failReported {
-			r.reportWriteError(nil, s, err)
+			r.reportWriteError(e, nil, s, err)
 		}
 		return
 	}
@@ -140,7 +140,8 @@ func (r *Run) emitQuoted(e *Entry, s *Stream, name, suffix string) {
 // commit hands e's queued calls to their streams. Each sink receives all
 // of e's calls for it, in order, under one lock, so no other entry's
 // record lands between two of e's; the order between sinks is not
-// observable.
+// observable. A sink e holds for an open record (record.go) is already
+// locked and stays locked.
 func (r *Run) commit(e *Entry) {
 	items := e.txn.items
 	for i := range items {
@@ -148,7 +149,10 @@ func (r *Run) commit(e *Entry) {
 			continue
 		}
 		sk := items[i].s.sink
-		sk.lock()
+		held := e.holds(sk)
+		if !held {
+			sk.lock()
+		}
 		for j := i; j < len(items); j++ {
 			it := &items[j]
 			if it.done || it.s.sink != sk {
@@ -158,27 +162,33 @@ func (r *Run) commit(e *Entry) {
 			if it.render != nil {
 				for _, pc := range it.render() {
 					if err := sk.write([]byte(pc.text)); err != nil {
-						sk.unlock() // exit() flushes every stream: never die holding one
+						if !held {
+							sk.unlock() // exit() flushes every stream: never die holding one
+						}
+						r.releaseRecord(e)
 						r.fatalf(err, "Failed to write output (at stage %d)", pc.stage)
 					}
 				}
 				continue
 			}
 			if err := sk.write([]byte(it.text)); err != nil && it.fail == failReported {
-				r.reportWriteError(sk, it.s, err)
+				r.reportWriteError(e, sk, it.s, err)
 			}
 		}
-		sk.unlock()
+		if !held {
+			sk.unlock()
+		}
 	}
 	e.txn.items = items[:0]
 }
 
 // reportWriteError is nonfatal_nontarget_file_error(errno, dest->filename)
-// for a checked call, issued while sink held (or none) is locked. Like
-// error(), it flushes stdout first; stdout's lock may be the one held.
-func (r *Run) reportWriteError(held sink, s *Stream, err error) {
+// for a checked call, issued while sink held (or none) is locked, and
+// e's open record, if any, holds its sinks. Like error(), it flushes
+// stdout first; stdout's lock may already be held.
+func (r *Run) reportWriteError(e *Entry, held sink, s *Stream, err error) {
 	o := r.out
-	if held != sink(o) {
+	if held != sink(o) && !e.holds(o) {
 		o.mu.Lock()
 		defer o.mu.Unlock()
 	}
@@ -196,10 +206,12 @@ func (r *Run) flushStream(e *Entry, s *Stream, fail failMode) {
 	if s.sink == nil {
 		return
 	}
-	s.sink.lock()
-	defer s.sink.unlock()
+	if !e.holds(s.sink) {
+		s.sink.lock()
+		defer s.sink.unlock()
+	}
 	if err := s.sink.flush(); err != nil && fail == failReported {
-		r.reportWriteError(s.sink, s, err)
+		r.reportWriteError(e, s.sink, s, err)
 	}
 }
 
@@ -208,10 +220,11 @@ func (r *Run) flushStdout(e *Entry) { r.flushStream(e, r.out.stdoutStream, failI
 
 // fatalAt is fatalf for an error raised while evaluating e. GNU's stdout
 // buffer already holds e's earlier output and exit() flushes it, so commit
-// e's transaction first.
+// e's transaction first, and never die holding a record's sinks.
 func (r *Run) fatalAt(e *Entry, err error, format string, a ...any) {
 	if e != nil {
 		r.commit(e)
+		r.releaseRecord(e)
 	}
 	r.fatalf(err, format, a...)
 }
@@ -220,18 +233,27 @@ func (r *Run) fatalAt(e *Entry, err error, format string, a ...any) {
 // evaluating e. glibc error() flushes stdout before printing, and GNU's
 // stdout buffer already holds e's earlier output, so commit e's
 // transaction first: in a merged stream the message follows that output.
+// Inside an open record the commit keeps the record's sinks locked
+// (errorInRecord), so no other entry's output lands in the record.
 func (r *Run) errorAt(e *Entry, err error, format string, a ...any) {
+	if e != nil && e.record.open {
+		r.errorInRecord(e, err, format, a...)
+		return
+	}
 	if e != nil {
 		r.commit(e)
 	}
 	r.errorf(err, format, a...)
 }
 
-// flushForDiagnostic is the fflush(stdout) inside glibc error().
-func (o *Output) flushForDiagnostic() {
+// diagnose is glibc error()'s fflush(stdout) and message. stdout stays
+// locked until the message is out, so in a merged stream no other entry's
+// output or record lands between the flushed bytes and the message.
+func (o *Output) diagnose(msg string) {
 	o.mu.Lock()
+	defer o.mu.Unlock()
 	o.f.flushBuf()
-	o.mu.Unlock()
+	o.r.writeStderr(msg)
 }
 
 // flushFilesQuietly is exit()'s _IO_cleanup flush of every FILE still

@@ -13,6 +13,7 @@ type sharedFile struct {
 	mu     sync.Mutex
 	name   string // the first name it was opened under (error messages)
 	key    devIno
+	seq    int // opening order: the order record.go locks shared files in
 	f      *os.File
 	c      *cfile
 	closed bool // fclose'd by closeSharedFiles: exit() no longer flushes it
@@ -76,7 +77,7 @@ func (reg *shareRegistry) fopen(path string) (*sharedFile, error) {
 		f.Close()
 		return sf, nil
 	}
-	sf := &sharedFile{name: path, key: key, f: f, c: newCfile(f)}
+	sf := &sharedFile{name: path, key: key, seq: len(reg.files), f: f, c: newCfile(f)}
 	reg.files[key] = sf
 	reg.order.insert(sf)
 	return sf, nil

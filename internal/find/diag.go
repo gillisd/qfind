@@ -12,9 +12,16 @@ import (
 // "<prog>: <message>[: <strerror>]\n" on stderr. It does not set the exit
 // status; callers do, as GNU does.
 func (r *Run) errorf(err error, format string, a ...any) {
-	if r.out != nil {
-		r.out.flushForDiagnostic()
+	msg := r.errorText(err, format, a...)
+	if r.out == nil {
+		r.writeStderr(msg)
+		return
 	}
+	r.out.diagnose(msg)
+}
+
+// errorText is the line error() prints.
+func (r *Run) errorText(err error, format string, a ...any) string {
 	var b strings.Builder
 	b.WriteString(r.prog)
 	b.WriteString(": ")
@@ -24,7 +31,7 @@ func (r *Run) errorf(err error, format string, a ...any) {
 		b.WriteString(libc.Strerror(err))
 	}
 	b.WriteByte('\n')
-	r.writeStderr(b.String())
+	return b.String()
 }
 
 // writeStderr is an unbuffered fputs to stderr: one write per record, and

@@ -66,6 +66,7 @@ type Entry struct {
 	prune         bool        // stop_at_current_level
 	cancelled     atomic.Bool // fts will never return this directory's FTS_DP (FTS_ERR, vanished under -ignore_readdir_race)
 	txn           txn
+	record        recordState // an open -printf/-fprintf record (record.go)
 }
 
 // setType records a d_type-derived type without a stat (FTS_NSOK).

@@ -17,6 +17,7 @@ import (
 // checked_fflush): a failed write is diagnosed under the stream's name.
 func predFprintf(r *Run, e *Entry, p *Predicate) bool {
 	fv := p.args.format
+	r.openRecord(e, fv.out)
 	for i := range fv.segments {
 		seg := &fv.segments[i]
 		switch seg.kind {
@@ -42,6 +43,7 @@ func predFprintf(r *Run, e *Entry, p *Predicate) bool {
 			}
 		}
 	}
+	r.closeRecord(e)
 	return true
 }
 
