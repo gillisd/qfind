@@ -154,7 +154,7 @@ namespace :references do
   CLOBBER.include dirs
 
   desc "Setup references"
-  task setup: dirs
+  multitask setup: dirs
 end
 
 namespace :qfind do
